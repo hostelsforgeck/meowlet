@@ -363,6 +363,17 @@
     i.type = 'text';
     i.placeholder = placeholder || '';
     i.autocomplete = 'off';
+
+    /* Android's autofill — Google Password Manager is usually the provider —
+       decides what a field is from its name, id, placeholder and label, and
+       autocomplete="off" on its own is a hint it is well known for overruling.
+       There was no name attribute here at all, so the id and the visible label
+       were all it had to go on, and a field labelled "name" is precisely what
+       it takes for a username. A neutral name takes that signal away. It is
+       never sent anywhere — none of these inputs live in a form, and nothing
+       here submits. */
+    i.name = 'nf-' + id;
+    i.setAttribute('autocorrect', 'off');
     i.spellcheck = false;
     wrap.append(l, i);
     if (hint) {
@@ -664,7 +675,18 @@
     }
 
     for (const input of [amountInput, reasonInput, personInput]) {
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+      /* Enter saves. The preventDefault is the entire point of this line and not
+         tidiness: submit() closes the sheet, and closeSheet() hands focus back
+         to the key that opened it. Without it the browser then carries out the
+         Enter's DEFAULT action against whatever holds focus by then — which is
+         that key — so the sheet reopens by itself the instant you save, with
+         nobody having touched + or -. Android's "Done" is an ordinary Enter, so
+         this was every save made from the on-screen keyboard. */
+      input.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        submit();
+      });
     }
 
     openSheet(out ? 'Money out' : 'Money in', body, [
@@ -789,7 +811,13 @@
       closeSheet();
       Plate.greet();
     }
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+    /* Same reason as the transaction sheet: without preventDefault the Enter
+       that saved the name goes on to activate whatever closeSheet() focuses. */
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      submit();
+    });
 
     openSheet('Your name', body, [
       ['Cancel', 'ghost', closeSheet],
