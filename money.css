@@ -304,7 +304,7 @@
   margin: calc(11.5 * var(--u));
   padding: calc(22 * var(--u));
   background: var(--surface);
-  border-radius: calc(var(--card-r) * var(--u));
+  border-radius: calc(36 * var(--u));
   animation: sheet-in .26s var(--ease-out);
 }
 @keyframes sheet-in {
@@ -478,3 +478,7 @@
   white-space: pre-wrap;
 }
 
+
+/* ---------- squircle corners ----------*/
+
+*, *::before, *::after { corner-shape: squircle !important; }
