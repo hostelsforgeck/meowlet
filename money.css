@@ -1,0 +1,480 @@
+/* ============================================================
+   Money Manager — ledger view.
+
+   Reuses every token and all the sheet chrome from styles.css;
+   this file only carries what differs: the four-column ledger
+   grid, the flow colouring, and the sheets the terminal app's
+   commands map onto.
+   ============================================================ */
+
+/* ---------- ledger grid ----------
+
+   when · reason · flow · bal. The date and the time are one fact, so they
+   share a cell; the reason takes the flexible track because it is the only
+   field you ever search by; both figures anchor to one right edge, where
+   magnitude reads as width. No weekday letter (ambiguous four days in seven
+   once the ledger is sparse) and no heading row — the capture never had one.
+*/
+
+.money .row {
+  position: relative;                /* the receipt flash sits on ::after */
+  display: grid;
+  grid-template-columns:
+    calc(112 * var(--u))   /* when: day number + time */
+    1fr                    /* reason                  */
+    calc(128 * var(--u))   /* flow                    */
+    calc(104 * var(--u));  /* balance                 */
+}
+
+/* Both figures grew by the width of two digits, taken from the reason — which
+   is the only elastic track and still has room for about eighteen characters.
+   At the old widths the balance held six characters, so anything from a lakh
+   up ran left into the flow beside it. */
+
+/* ...and past what even that holds, the figure gives way rather than collide.
+   A ledger of a hundred small numbers and one big one is still readable; two
+   numbers on top of each other is not. */
+.money .c-flow.is-long  > span,
+.money .c-bal.is-long   > span { font-size: calc(15.5 * var(--u)); }
+.money .c-flow.is-vlong > span,
+.money .c-bal.is-vlong  > span { font-size: calc(13 * var(--u)); }
+
+/* And a guarantee for whatever the steps do not reach: a figure may be clipped,
+   but it may never be drawn over the figure beside it. */
+.money .c-flow, .money .c-bal { overflow: hidden; }
+
+.money .c-flow,
+.money .c-bal { justify-content: flex-end; }
+.money .c-bal { padding-right: calc(14 * var(--u)); }
+
+.money .c-reason {
+  justify-content: flex-start;
+  padding-inline: calc(10 * var(--u));
+  overflow: hidden;
+}
+.money .c-reason > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  /* body sets line-height 1, which makes the line box exactly one em — and an
+     em stops at the baseline. Clip that box and every descender goes with it:
+     the j in "knkjn" loses its tail. This face's ink runs about 1.3em top to
+     bottom, so 1.2 is still a pixel short — 1.35 clears it. The cell has the
+     room: it is 38.6px tall and this is 27. */
+  line-height: 1.35;
+}
+
+/* Day and time are centred on each other, not sat on a shared baseline:
+   both are lining figures with no descenders, so a baseline parks the
+   smaller one low. The last 0.5u is the line-box difference between
+   21px and 17px digits. */
+.money .c-when { justify-content: flex-start; padding-left: calc(12 * var(--u)); }
+.money .c-when.is-cont { padding-left: calc(48 * var(--u)); }
+.money .when-in { display: flex; align-items: center; gap: calc(6 * var(--u)); }
+.money .when-in .t {
+  position: relative;
+  top: calc(0.5 * var(--u));
+  color: var(--ink-weekday);
+  font-weight: 400;
+  font-size: calc(17 * var(--u));
+}
+
+/* The day number is wayfinding, not content — at 400 the reason stays the
+   heaviest thing on the row. The chip sizes from its own text so it centres
+   on the digits exactly as a bare number does. */
+.money .daynum {
+  height: auto;
+  padding-block: calc(2.4 * var(--u));
+  font-weight: 400;
+}
+.money .row.is-today .daynum { font-weight: 500; }
+
+/* Money out is the one thing worth colouring; money in stays ink, so a scan
+   down the column reads as "where it went". */
+.money .c-flow.is-out { color: var(--accent); }
+
+/* The balance carries no rupee sign: every figure here is rupees and the
+   flow already says so once a row. It recedes so the flow reads as the
+   event and the balance as the footnote. */
+.money .c-bal {
+  font-size: calc(19 * var(--u));
+  font-weight: 400;
+  color: #9a9a9a;
+}
+
+/* ---------- the row is the receipt ----------
+
+   No toast. A new transaction tints its own row and fades out; an undone
+   one collapses away. The confirmation is the data, so nothing is covered
+   and no new surface exists. */
+
+.money .row.is-new::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  pointer-events: none;
+  animation: row-flash 1.5s var(--ease-out) forwards;
+}
+@keyframes row-flash {
+  0%   { opacity: .5; }
+  16%  { opacity: .2; }
+  100% { opacity: 0; }
+}
+
+.money .row.is-gone {
+  overflow: hidden;
+  animation: row-out .34s var(--ease-out) forwards;
+}
+@keyframes row-out {
+  to { height: 0; opacity: 0; transform: translateX(calc(-30 * var(--u))); }
+}
+
+/* ---------- the plate ----------
+
+   One zone showing one thing at a time: the greeting on open, the balance at
+   rest, the figure rolling when money moves, a short message after an action
+   that produced no row. Never two at once.
+
+   It is a display you may tap, not a button you must, so it is SUNK into the
+   bar while the keys are lifted off it — and it answers a press by dimming
+   rather than travelling. */
+
+.money .plate {
+  all: unset;
+  position: relative;
+  flex: 40 1 0;
+  height: calc(var(--bar-h) * var(--u));
+  border-radius: calc(22 * var(--u));
+  background: #121212;
+  color: #fff;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: manipulation;
+  /* the plate is held as well as tapped, and a held button otherwise raises the
+     text-selection callout on a phone */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  box-shadow:
+    inset 0 calc(2 * var(--u)) calc(4 * var(--u)) rgba(0, 0, 0, .55),
+    inset 0 calc(-1 * var(--u)) 0 rgba(255, 255, 255, .06);
+  transition: background-color .16s var(--ease-out), transform .16s var(--ease-out);
+}
+.money .plate:active { background: #1c1c1c; transform: scale(.992); }
+.money .plate:focus-visible {
+  outline: calc(2 * var(--u)) solid var(--accent);
+  outline-offset: calc(2 * var(--u));
+}
+
+.money .pl-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: calc(14 * var(--u));
+  white-space: nowrap;
+}
+.money .pl-layer.in  { animation: layer-in  .4s var(--ease-out); }
+.money .pl-layer.out { animation: layer-out .4s var(--ease-out) forwards; }
+@keyframes layer-in  { from { opacity: 0; transform: translateY(58%); } to { opacity: 1; transform: none; } }
+@keyframes layer-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-58%); } }
+
+.money .pl-greet { font-size: calc(25 * var(--u)); font-weight: 500; }
+.money .pl-msg   { font-size: calc(20 * var(--u)); font-weight: 400; color: #d8d8d8; }
+
+/* Both step down when they no longer fit beside the cat, and truncate rather
+   than run off the edge if even the step is not enough — a name has no upper
+   bound, and "Nothing to undo" is fifteen characters. */
+.money .pl-greet, .money .pl-msg {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;       /* or the ellipsis clipping takes the descenders too */
+}
+.money .pl-greet.is-long { font-size: calc(19 * var(--u)); }
+.money .pl-msg.is-long   { font-size: calc(15 * var(--u)); }
+
+/* Alone on the plate, the figure can be the largest thing on the screen. */
+.money .pl-bal { display: flex; font-size: calc(30 * var(--u)); font-weight: 500; line-height: 1.1; }
+.money .pl-bal.is-negative { color: var(--accent); }
+
+/* Long figures step down rather than run under the cat or off the edge. The
+   mascot's corner leaves the figure about 137 reference px, and this face costs
+   0.578em a character, so seven is what fits at full size. Each step below was
+   checked against every balance up to nine digits, both signs. */
+.money .pl-bal.is-long  { font-size: calc(25 * var(--u)); }   /* 8-9 chars   */
+.money .pl-bal.is-vlong { font-size: calc(21 * var(--u)); }   /* 10-11 chars */
+.money .pl-bal.is-xlong { font-size: calc(16 * var(--u)); }   /* a crore, just in case */
+.money .pl-bal .d { display: inline-block; height: 1.1em; overflow: hidden; }
+.money .pl-bal .d i { display: block; font-style: normal; height: 1.1em; }
+.money .pl-bal .d.roll i { animation: roll .66s var(--ease-out) forwards; }
+@keyframes roll { from { transform: none; } to { transform: translateY(-1.1em); } }
+
+/* ---------- the two keys ----------
+
+   Roughly four entries in five are spends, so money out is the wider target
+   and owns the right edge. Both lift off the bar, and both travel down on a
+   press — which is what separates them from the plate. */
+
+.money .key {
+  flex: none;
+  width: auto;
+  border-radius: calc(20 * var(--u));
+  box-shadow:
+    0 calc(1 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, .07),
+    0 calc(3 * var(--u)) calc(8 * var(--u)) rgba(0, 0, 0, .10);
+}
+.money .key.k-in  { flex: 25 1 0; }
+.money .key.k-out {
+  flex: 35 1 0;
+  background: var(--pill);
+  color: #fff;
+  box-shadow:
+    0 calc(1 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, .14),
+    0 calc(4 * var(--u)) calc(10 * var(--u)) rgba(0, 0, 0, .20);
+}
+.money .key:not(:disabled):active {
+  transform: translateY(calc(2 * var(--u))) scale(.985);
+  box-shadow: 0 calc(1 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, .10);
+}
+.money #btnIn .icon  { width: calc(22 * var(--u)); height: calc(22 * var(--u)); }
+.money #btnOut .icon { width: calc(26 * var(--u)); height: calc(4  * var(--u)); }
+
+/* ---------- empty state ---------- */
+
+.money .blank {
+  margin: calc(28 * var(--u)) 0 0;
+  text-align: center;
+  font-size: calc(18 * var(--u));
+  font-weight: 400;
+  color: var(--ink-empty);
+}
+
+/* action rows inside the You sheet */
+.menu-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(46 * var(--u));
+  padding-inline: calc(14 * var(--u));
+  border-radius: calc(13 * var(--u));
+  font-size: calc(19 * var(--u));
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.menu-item:hover, .menu-item:focus-visible { background: rgba(0, 0, 0, .05); }
+.menu-item:active { background: rgba(0, 0, 0, .08); }
+.menu-item:focus-visible { box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--ink); }
+
+/* the balance, restated at the head of the You sheet */
+.you-bal {
+  margin: 0 0 calc(18 * var(--u));
+  font-size: calc(38 * var(--u));
+  font-weight: 500;
+  letter-spacing: -.01em;
+}
+.you-bal.is-negative { color: var(--accent); }
+.you-list { display: flex; flex-direction: column; gap: calc(2 * var(--u)); }
+
+/* ---------- sheets ---------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, .28);
+  animation: fade-in .18s var(--ease-out);
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.sheet {
+  width: 100%;
+  max-height: 88%;
+  display: flex;
+  flex-direction: column;
+  margin: calc(11.5 * var(--u));
+  padding: calc(22 * var(--u));
+  background: var(--surface);
+  border-radius: calc(var(--card-r) * var(--u));
+  animation: sheet-in .26s var(--ease-out);
+}
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(calc(24 * var(--u))); }
+  to   { opacity: 1; transform: none; }
+}
+
+.sheet-title {
+  margin: 0 0 calc(16 * var(--u));
+  font-size: calc(22 * var(--u));
+  font-weight: 500;
+}
+
+.sheet-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: calc(19 * var(--u));
+}
+
+.sheet-actions {
+  display: flex;
+  gap: calc(10 * var(--u));
+  margin-top: calc(20 * var(--u));
+}
+
+/* ---------- form fields ---------- */
+
+.field { margin-bottom: calc(14 * var(--u)); }
+.field:last-child { margin-bottom: 0; }
+
+.field label {
+  display: block;
+  margin-bottom: calc(7 * var(--u));
+  font-size: calc(17 * var(--u));
+  font-weight: 400;
+  color: var(--ink-weekday);
+}
+
+.field input {
+  all: unset;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: calc(52 * var(--u));
+  padding-inline: calc(14 * var(--u));
+  border-radius: calc(13 * var(--u));
+  background: #f4f4f4;
+  font: inherit;
+  font-size: calc(21 * var(--u));
+  color: var(--ink);
+  caret-color: var(--accent);
+}
+.field input:focus-visible { box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--ink); }
+.field input::placeholder { color: #bdbdbd; }
+
+.hint {
+  margin: calc(8 * var(--u)) 0 0;
+  font-size: calc(16 * var(--u));
+  font-weight: 400;
+  color: var(--ink-weekday);
+  line-height: 1.5;
+}
+.error {
+  margin: calc(10 * var(--u)) 0 0;
+  font-size: calc(17 * var(--u));
+  color: var(--accent);
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  all: unset;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(56 * var(--u));
+  border-radius: calc(16 * var(--u));
+  font-size: calc(20 * var(--u));
+  font-weight: 500;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform .18s var(--ease-spring);
+}
+.btn:active { transform: scale(.97); }
+.btn:focus-visible { outline: calc(2 * var(--u)) solid var(--accent); outline-offset: calc(2 * var(--u)); }
+.btn-primary { background: var(--pill); color: #fff; }
+.btn-ghost { background: #f0f0f0; color: var(--ink); }
+.btn-danger { background: var(--accent); color: #fff; }
+
+/* ---------- font picker ---------- */
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8 * var(--u));
+}
+
+.choice {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: calc(2 * var(--u)) calc(12 * var(--u));
+  padding: calc(12 * var(--u)) calc(14 * var(--u));
+  border-radius: calc(13 * var(--u));
+  background: #f4f4f4;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform .18s var(--ease-spring);
+}
+.choice:active { transform: scale(.985); }
+.choice:focus-visible { box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--ink); }
+
+/* The selected row inverts, so the picker reads at a glance. */
+.choice.is-on { background: var(--pill); color: #fff; }
+
+.choice-name {
+  font-size: calc(19 * var(--u));
+  font-weight: 500;
+}
+
+/* Rendered in the face it offers — the preview is the argument. */
+.choice-sample {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  font-size: calc(18 * var(--u));
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.choice-note {
+  grid-column: 1;
+  font-size: calc(15 * var(--u));
+  font-weight: 400;
+  color: var(--ink-weekday);
+}
+.choice.is-on .choice-note { color: #a0a0a0; }
+
+/* ---------- read-only tables inside sheets ---------- */
+
+.mini {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: calc(18 * var(--u));
+  font-weight: 500;
+}
+.mini th, .mini td { padding-right: calc(14 * var(--u)); }
+.mini th:last-child, .mini td:last-child { padding-right: 0; }
+.mini th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-weekday);
+  padding-bottom: calc(8 * var(--u));
+}
+.mini td {
+  padding-block: calc(9 * var(--u));
+  border-top: 1px solid #efefef;
+  vertical-align: top;
+}
+.mini .num { text-align: right; white-space: nowrap; }
+.mini .is-out { color: var(--accent); }
+
+.pre {
+  margin: 0;
+  font: inherit;
+  font-size: calc(16 * var(--u));
+  font-weight: 400;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
