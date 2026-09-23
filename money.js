@@ -260,6 +260,13 @@
       `${date.getDate()} ${MONTHS[date.getMonth()]}${at ? ' ' + at : ''}, ` +
       `${flowText(flow)}, balance ${rupees(balance)}, ${reason}`);
 
+    /* stamped for months.js: the month band, the day pill and their totals
+       are all derived from these three, so it never has to see the state */
+    row.dataset.mm = String(date.getMonth() + 1).padStart(2, '0') + '/' +
+                     String(date.getFullYear() % 100);
+    row.dataset.day = date.getDate() + ' ' + MONTHS[date.getMonth()].toUpperCase();
+    row.dataset.flow = String(Number(flow) || 0);
+
     const when = document.createElement('div');
     when.className = 'cell c-when' + (isFirst ? '' : ' is-cont');
     when.setAttribute('role', 'cell');
@@ -309,6 +316,9 @@
 
     blankNote.hidden = rows > 0;
     card.hidden = rows === 0;
+    /* the card was just rebuilt from scratch, so the month bands go back on
+       it and the folds are re-applied */
+    if (window.Months) window.Months.sync();
     /* ...but not while the plate is a field, or is mid-commit holding the
        old balance for the roll to leave */
     if (C.beat === 0 && !C.busy) Plate.rest();
