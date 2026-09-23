@@ -1365,17 +1365,26 @@
 
   /* ---------- name, help, clear ---------- */
 
+  /* The plate leaves the greeting 142 reference px beside the cat, and this
+     face costs 15 of them a character: nine in all, and "Hi " has three.
+     So six is the longest name that sits at full size. The field stops
+     there rather than letting the greeting quietly shrink to fit. */
+  const NAME_MAX = 6;
+
   function setName() {
     const body = document.createElement('div');
-    const name = field('Name', 'f-name', 'Shahir');
+    const name = field('Name', 'f-name', 'Meow');
     body.appendChild(name);
     const input = name.querySelector('input');
-    input.value = state.name;
+    input.maxLength = NAME_MAX;
+    input.value = state.name.slice(0, NAME_MAX);
 
     function submit() {
       const value = input.value.trim();
       if (!value) { input.focus(); return; }
-      state.name = value[0].toUpperCase() + value.slice(1);
+      /* maxLength holds a keyboard; a paste can still arrive longer */
+      const cut = value.slice(0, NAME_MAX);
+      state.name = cut[0].toUpperCase() + cut.slice(1);
       save();
       closeSheet();
       Plate.greet();
