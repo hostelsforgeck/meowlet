@@ -655,7 +655,6 @@
 
   const chiprow = document.getElementById('chiprow');
   const chipscroll = document.getElementById('chipscroll');
-  const chipKbd = document.getElementById('chipKbd');
   const composeInput = document.getElementById('composeInput');
   const plateWrap = document.getElementById('plateWrap');
 
@@ -737,11 +736,12 @@
     try { composeInput.setSelectionRange(n, n); } catch (_) { /* not a text type */ }
   }
 
-  /* The keyboard key swaps the chips for the letters, for a reason no chip
-     covers. It only ever exists on beat 2, alongside them. */
+  /* Beat 2 opens with inputmode=none: the caret is there, the chips are
+     there, and nothing has covered the ledger. TAPPING THE FIELD is what asks
+     for the letters — the same gesture as every other app on the phone, and
+     one that needs no button of its own. */
   function useLetters(on) {
     if (C.beat !== 2) return;
-    chipKbd.classList.toggle('is-on', on);
     setMode(on ? 'text' : 'none');
     if (on) showChips(false, true); else syncChips(true);
   }
@@ -788,11 +788,8 @@
       }, 240);
       return;
     }
-    /* A hide with no fade only ever happens because the beat itself ended,
-       so the keyboard toggle goes home with it. */
     chiprow.hidden = true;
     chiprow.classList.remove('is-out');
-    chipKbd.classList.remove('is-on');
   }
 
   /* The strip exists for exactly one condition: beat 2, reason still empty,
@@ -1236,9 +1233,11 @@
     }, 0);
   });
 
-  chipKbd.addEventListener('click', () => {
+  /* pointerdown rather than click: a keyboard may only be summoned inside
+     the gesture the browser counts as a user activation. */
+  composeInput.addEventListener('pointerdown', () => {
     if (C.busy || C.beat !== 2) return;
-    useLetters(composeInput.getAttribute('inputmode') !== 'text');
+    if (composeInput.getAttribute('inputmode') !== 'text') useLetters(true);
   });
 
 

@@ -642,7 +642,10 @@
   font: inherit;
   font-size: calc(30 * var(--u));
   font-weight: 500;
-  line-height: 1.1;
+  /* The plate's own height, so the text centres on the line box rather than
+     on each browser's idea of where an input's baseline belongs — Brave was
+     leaving a band of space under it and Chrome was not. */
+  line-height: calc(var(--bar-h) * var(--u));
   color: #fff;
   caret-color: var(--accent);
   -webkit-appearance: none;
@@ -654,6 +657,10 @@
   font-size: calc(25 * var(--u));
   padding-left: calc(85 * var(--u));
 }
+
+/* Chromium gives a text input a UA line-height and an inner box of its own.
+   Both are overridden above; these stop either creeping back. */
+.money .pl-input { min-height: 0; vertical-align: middle; }
 .money .pl-input::placeholder { color: #5f5f5f; }
 .money .pl-input::-webkit-outer-spin-button,
 .money .pl-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -729,6 +736,7 @@
 
 .money .chipscroll {
   flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   gap: calc(8 * var(--u));
   overflow-x: auto;
@@ -780,23 +788,6 @@
 .money .chip:focus-visible {
   outline: calc(2 * var(--u)) solid var(--accent);
   outline-offset: calc(2 * var(--u));
-}
-
-/* pinned outside the scroll, so reaching the keyboard is never a scroll */
-.money .chip-kbd {
-  flex: 0 0 auto;
-  width: calc(58 * var(--u));
-  justify-content: center;
-  font-size: calc(21 * var(--u));
-  background: #e6e6e6;
-}
-.money .chip-kbd.is-on { background: var(--pill); color: #fff; }
-
-/* A real mouse means a real keyboard, and a real keyboard is already there —
-   so there is nothing for this key to summon. `hover` plus a fine pointer is
-   the same test mascot.js uses to decide the eyes may follow a cursor. */
-@media (hover: hover) and (pointer: fine) {
-  .money .chip-kbd { display: none; }
 }
 
 /* The chosen chip travels into the field rather than just vanishing. Its
