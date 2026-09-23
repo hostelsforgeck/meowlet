@@ -479,6 +479,325 @@
 }
 
 
+
+/* ============================================================
+   COMPOSE — the plate takes the entry.
+
+   The sheet is gone from the one thing you do forty times a day.
+   Tap a key and the plate stops showing the balance and becomes the
+   field: [plate][→] for the amount, [plate][✓] for the reason. The
+   sheet stays for People, Export, Font, Help and You.
+
+   Two facts make it work, and neither is new UI:
+     · the bar RIDES the keyboard, so the plate is never covered
+     · one key collapses while composing, so the bar is two objects
+   ============================================================ */
+
+/* The keyboard's height and the chip strip's, both in reference px.
+   --kb is the only thing between the bar and the floor; --chips sits
+   above the bar, so it costs the ledger rather than the bar. */
+.money { --kb: 0px; --pad: 0; --chips: 0; }
+
+/* The bar rides the keyboard. --kb is a real px length read from
+   visualViewport, not a reference unit — the OS keyboard is whatever
+   height it is, so this is the one measurement we do not scale. */
+.money .toolbar {
+  bottom: calc(var(--kb) + (var(--pad) + var(--bar-bottom)) * var(--u)
+               + env(safe-area-inset-bottom, 0px));
+  transition: bottom var(--travel, 240ms) var(--ease-out);
+}
+
+.money .scroller {
+  padding-bottom: calc((106 + var(--pad) + var(--chips)) * var(--u) + var(--kb)
+                       + env(safe-area-inset-bottom, 0px));
+  transition: padding-bottom var(--travel, 240ms) var(--ease-out);
+}
+
+/* ---------- the plate, as a field ----------
+
+   The plate is a button, so the input cannot live inside it. The wrap
+   is the flex child; the button and the input share its box. */
+
+.money .plate-wrap {
+  position: relative;
+  flex: 40 1 0;
+  display: flex;
+  min-width: 0;
+}
+.money .plate-wrap .plate { flex: 1 1 auto; }
+
+/* The label the plate shows while it is a field — the same ₹ and ?
+   the sheet's inputs used, so nothing new has to be learned. */
+.money .pl-field {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  font-size: calc(19 * var(--u));
+  font-weight: 400;
+  color: #7d7d7d;
+}
+
+/* The real input, over the plate. A real input because the OS keyboard
+   is the only correct keyboard: it is the one the person has set up,
+   in their language, with their autocorrect and their swipe. */
+.money .pl-input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  margin: 0;
+  border: 0;
+  border-radius: calc(22 * var(--u));
+  background: transparent;
+  /* clears the cat's gutter, then the ₹ / ? label */
+  padding: 0 calc(16 * var(--u)) 0 calc(107 * var(--u));
+  font: inherit;
+  font-size: calc(30 * var(--u));
+  font-weight: 500;
+  line-height: 1;
+  color: #fff;
+  caret-color: var(--accent);
+  -webkit-appearance: none;
+          appearance: none;
+  outline: none;
+}
+.money .pl-input.is-word { font-size: calc(25 * var(--u)); }
+.money .pl-input::placeholder { color: #5f5f5f; }
+.money .pl-input::-webkit-outer-spin-button,
+.money .pl-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* the sign is set by the key you pressed, and it is not typed over */
+.money .pl-sign { color: var(--accent); padding-left: calc(6 * var(--u)); }
+
+/* A travelling object that simply stops has not arrived — it has been
+   switched off. The settle gives the arrival a beat, and the roll is
+   hung on that beat, so the figure reads as caused by the landing. */
+.money .plate.is-land { animation: plate-land 160ms var(--ease-spring); }
+@keyframes plate-land {
+  0%   { transform: scaleY(1); }
+  40%  { transform: scaleY(.965) translateY(calc(1.5 * var(--u))); }
+  100% { transform: scaleY(1); }
+}
+
+/* ---------- the keys while composing ----------
+
+   One key collapses to nothing, so the bar goes from three objects to
+   two and the other becomes the commit. The gap lives on the key, not
+   on the row, so it can collapse with it. */
+
+.money .toolbar { gap: 0; }
+.money .key { margin-left: calc(var(--bar-gap) * var(--u)); }
+.money .key {
+  overflow: hidden;
+  transition:
+    width .3s var(--ease-out), margin-left .3s var(--ease-out),
+    opacity .2s var(--ease-out), background-color .22s var(--ease-out),
+    color .22s var(--ease-out), transform .18s var(--ease-out);
+}
+.money .key.is-gone {
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
+  margin-left: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+/* ...and the survivor stops being 35 parts of the bar, so the field gets the
+   room instead of a commit key three fingers wide */
+.money .key.is-go, .money .key.is-cold { flex: 0 0 calc(var(--key) * var(--u)); }
+
+/* #btnOut's glyph is locked to 4u tall for the minus. The compose glyphs are
+   square, and an ID in the selector is what it takes to say so. */
+.money #btnOut .icon.is-square,
+.money #btnIn  .icon.is-square { width: calc(24 * var(--u)); height: calc(24 * var(--u)); }
+.money .key.is-go { background: var(--pill); color: #fff; }
+.money .key.is-cold { background: #e4e4e4; color: var(--ink-disabled); cursor: default; }
+
+/* ---------- the amount pad ----------
+
+   Drawn here rather than asked of the OS, and for once that is the right way
+   round: the amount is four digits, every OS keyboard is a different height,
+   and a laptop has none at all. Its own pad is the only one whose lift is
+   exact on all three. */
+
+.money .kbd {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(300 * var(--u));
+  padding: calc(14 * var(--u)) calc(7 * var(--u))
+           calc(18 * var(--u) + env(safe-area-inset-bottom, 0px));
+  background: #d7dae0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(10 * var(--u));
+  transform: translateY(101%);
+  transition: transform .26s var(--ease-out);
+  z-index: 8;
+}
+.money .kbd.is-up { transform: none; }
+.money .kbd .kr { display: flex; justify-content: center; gap: calc(7 * var(--u)); }
+.money .kbd .kk {
+  all: unset;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(72 * var(--u));
+  border-radius: calc(10 * var(--u));
+  background: #fdfdfd;
+  box-shadow: 0 calc(1 * var(--u)) 0 rgba(0, 0, 0, .3);
+  font-size: calc(30 * var(--u));
+  font-weight: 400;
+  color: var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color .1s linear, transform .1s linear;
+}
+.money .kbd .kk:active { background: #c4c8d0; transform: scale(.94); }
+.money .kbd .kk:focus-visible {
+  outline: calc(2 * var(--u)) solid var(--accent);
+  outline-offset: calc(-3 * var(--u));
+}
+.money .kbd .kk.mod {
+  flex: 1.5 1 0;
+  background: #b6bac3;
+  color: #fff;
+  font-size: calc(24 * var(--u));
+  box-shadow: none;
+}
+/* a hole, not a key — it keeps ⌫ and ⌨ at the two ends of the row */
+.money .kbd .kk.hole {
+  flex: 2 1 0;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .money .kbd { transition: none; }
+}
+
+/* ---------- the chips ----------
+
+   Categories, not past reasons. A fixed vocabulary keeps every chip in
+   the same slot forever, and a chip that never moves stops having to be
+   read. `Other` is last and is not optional: without it people force-fit
+   and every other category goes dirty. */
+
+.money .chiprow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--kb) + (var(--pad) + var(--bar-bottom) + var(--bar-h) + 10) * var(--u)
+               + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  padding-inline: calc(var(--bar-inset) * var(--u));
+  transition: bottom var(--travel, 240ms) var(--ease-out), opacity .18s var(--ease-out);
+  z-index: 5;
+}
+.money .chiprow.is-out { opacity: 0; pointer-events: none; }
+
+.money .chipscroll {
+  flex: 1 1 auto;
+  display: flex;
+  gap: calc(8 * var(--u));
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  /* snap, so a chip never comes to REST half-cut by either edge — a
+     guillotined "Shopping" reading as "pping" is worse than no chip */
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: calc(2 * var(--u));
+}
+.money .chipscroll::-webkit-scrollbar { width: 0; height: 0; }
+.money .chipscroll .chip { scroll-snap-align: start; }
+
+/* ...and fade whichever edge actually has something past it, so mid-scroll
+   a chip dissolves instead of being cut. Both are driven by the scroll
+   position, so at rest on the left the first chip is never faded. */
+.money .chipscroll.fade-r {
+  -webkit-mask-image: linear-gradient(90deg, #000 86%, transparent 100%);
+          mask-image: linear-gradient(90deg, #000 86%, transparent 100%);
+}
+.money .chipscroll.fade-l {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14%);
+          mask-image: linear-gradient(90deg, transparent 0, #000 14%);
+}
+.money .chipscroll.fade-l.fade-r {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
+}
+
+.money .chip {
+  all: unset;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: calc(48 * var(--u));
+  padding-inline: calc(14 * var(--u));
+  border-radius: calc(15 * var(--u));
+  background: var(--surface);
+  color: var(--ink);
+  font-size: calc(18 * var(--u));
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color .16s var(--ease-out), color .16s var(--ease-out),
+              transform .16s var(--ease-out);
+}
+.money .chip:active { transform: scale(.94); }
+.money .chip:focus-visible {
+  outline: calc(2 * var(--u)) solid var(--accent);
+  outline-offset: calc(2 * var(--u));
+}
+
+/* pinned outside the scroll, so reaching the keyboard is never a scroll */
+.money .chip-kbd {
+  flex: 0 0 auto;
+  width: calc(58 * var(--u));
+  justify-content: center;
+  font-size: calc(21 * var(--u));
+  background: #e6e6e6;
+}
+.money .chip-kbd.is-on { background: var(--pill); color: #fff; }
+
+/* The chosen chip travels into the field rather than just vanishing. Its
+   box is pinned to the source rect in JS: out of the flex row it would
+   otherwise shrink against whatever width is left to the screen edge, and
+   the app's overflow: hidden would then crop the word. */
+.money .chip.is-fly {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  justify-content: center;
+  background: var(--pill);
+  color: #fff;
+  flex: none;
+  min-width: 0;
+  max-width: none;
+  transition: transform .26s var(--ease-out), opacity .26s var(--ease-out);
+}
+
+/* ---------- the draft row ----------
+
+   Beat 2 puts the reason on the plate, so without this the amount you
+   just typed would be nowhere on screen. */
+.money .row.is-draft { background: #fff6f5; }
+.money .row.is-draft .cell { opacity: .5; }
+.money .row.is-draft .cell.is-live { opacity: 1; }
+.money .row.is-draft .c-bal { color: #cfcfcf; }
+
+@media (prefers-reduced-motion: reduce) {
+  .money .toolbar, .money .chiprow, .money .scroller { transition: none; }
+}
+
+
 /* ---------- squircle corners ----------*/
 
 *, *::before, *::after { corner-shape: squircle !important; }

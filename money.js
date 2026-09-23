@@ -275,7 +275,9 @@
 
     blankNote.hidden = rows > 0;
     card.hidden = rows === 0;
-    Plate.rest();
+    /* ...but not while the plate is a field, or is mid-commit holding the
+       old balance for the roll to leave */
+    if (C.beat === 0 && !C.busy) Plate.rest();
   }
 
   /* ---------- the row is the receipt ----------
@@ -396,8 +398,7 @@
   let plateSeq;
 
   function plateSwap(node) {
-    const old = plateEl.querySelector('.pl-layer:not(.out)');
-    if (old) {
+    for (const old of plateEl.querySelectorAll('.pl-layer:not(.out)')) {
       if (reduced) old.remove();
       else { old.classList.add('out'); setTimeout(() => old.remove(), 420); }
     }
@@ -484,6 +485,14 @@
       if (state.current !== from && window.Mascot) {
         window.Mascot.mood(state.current > from ? 'in' : 'out');
       }
+    },
+
+    /* A static figure of a given value, with no roll in it. The plate carries
+       the OLD balance home while the bar travels, so the roll that plays on
+       arrival has a "from" to leave. */
+    hold(value) {
+      clearTimeout(plateSeq);
+      plateSwap(figure(value));
     },
 
     /* for the few actions that produce no row at all */
@@ -598,102 +607,643 @@
 
   /* ---------- new transaction ---------- */
 
-  /* `sign` is '+' or '-'. Pressing a key presets the direction, so the most
-     common data-entry error in a money app — logging a spend as income —
-     has nowhere to happen. Typing over it still works. */
-  function newTransaction(sign) {
-    const out = sign === '-';
-    const body = document.createElement('div');
-    const amount = field('₹', 'f-amount', out ? '-299' : '+500',
-      '5 or +5 adds  ·  -5 subtracts  ·  g5 lends  ·  t5 collects  ·  max 9999');
-    const reason = field('?', 'f-reason', 'Midnight pizza');
-    const person = field('name', 'f-person', 'Ravi');
-    person.hidden = true;
-    const err = document.createElement('p');
-    err.className = 'error';
-    err.hidden = true;
-    body.append(amount, reason, person, err);
+  /* ---------- compose ----------
 
-    const amountInput = amount.querySelector('input');
+     Entry used to open a sheet. It no longer does: the plate stops being a
+     balance and becomes the field, and the two keys become the direction
+     you already chose plus the one way forward.
 
-    /* Stop the fifth digit at the keystroke, rather than only refusing it on
-       save. Only DIGITS are gated: a stray "." has to reach parseAmount so it
-       can say "whole rupees only" — silently swallowing it would turn 10.50
-       into 1050 and be off by a factor of a hundred. Letters and a leading
-       +/-/g/t pass through untouched and are judged later, as before.
+         −  →  ₹ 620  →  [Food]  →  ✓
 
-       parseAmount keeps its own ceiling. This one is a courtesy to the thumb;
-       that one is the rule, and it still catches a paste, an autofill, or
-       anything that sets .value without a keystroke. */
-    amountInput.addEventListener('beforeinput', (e) => {
-      if (e.inputType && e.inputType.indexOf('delete') === 0) return;
-      const typed = e.data != null ? e.data
-        : (e.dataTransfer ? e.dataTransfer.getData('text') : '');
-      if (!/\d/.test(typed)) return;
-      const el = e.target;
-      const after = el.value.slice(0, el.selectionStart) + typed + el.value.slice(el.selectionEnd);
-      if ((after.match(/\d/g) || []).length > 4) e.preventDefault();
-    });
-    const reasonInput = reason.querySelector('input');
-    const personInput = person.querySelector('input');
-    amountInput.value = sign;
+     Two beats, one surface, nothing covered. `sign` is '+' or '-' and is set
+     by the key you pressed, so the most common data-entry error in a money
+     app — logging a spend as income — still has nowhere to happen.
 
-    // g/t need someone to attach the debt to, so reveal that field live.
-    amountInput.addEventListener('input', () => {
-      person.hidden = !/^[gt]/i.test(amountInput.value.trim());
-    });
+     The sheet is not gone. People, Export, Font, Help and You still use it;
+     it just stops being the thing you touch forty times a day. */
 
-    function submit() {
-      const parsed = parseAmount(amountInput.value);
-      if (parsed.error) { fail(parsed.error, amountInput); return; }
+  const chiprow = document.getElementById('chiprow');
+  const chipscroll = document.getElementById('chipscroll');
+  const chipKbd = document.getElementById('chipKbd');
+  const composeInput = document.getElementById('composeInput');
+  const plateWrap = document.getElementById('plateWrap');
+  const kbd = document.getElementById('kbd');
+  const PAD_H = 300;           /* reference px — the pad's own height */
 
-      const how = reasonInput.value.trim();
-      if (!how) { fail('Every transaction needs a reason.', reasonInput); return; }
+  /* Categories, not past reasons: a fixed vocabulary keeps every chip in the
+     same slot forever, and a chip that never moves stops having to be read.
+     `Entertainment` is thirteen characters — about 153 reference px — and
+     blows the row on its own, so it ships as `Fun`. */
+  const CHIPS_OUT = ['Food', 'Travel', 'Groceries', 'Bills', 'Shopping',
+                     'Health', 'Fun', 'Rent', 'Gifts', 'Other'];
+  const CHIPS_IN  = ['Salary', 'Refund', 'Gift', 'Sold', 'Other'];
+  const CHIP_H = 60;          /* 48 chip + the 12 that separates it from the bar */
+  const isChip = (s) => CHIPS_OUT.indexOf(s) >= 0 || CHIPS_IN.indexOf(s) >= 0;
 
-      let who = null;
-      if (parsed.person) {
-        who = personInput.value.trim();
-        if (!who) { fail('Who was it with?', personInput); return; }
-      }
+  /* beat 0 at rest · 1 amount · 2 reason · 3 who (g/t only) */
+  const C = { beat: 0, sign: '-', raw: '', why: '', who: '', busy: false, when: null };
 
-      const before = state.current;
-      record(state, new Date(), parsed.op, parsed.amount, how, who);
-      save();
-      render();
-      closeSheet();
-      toBottom();
-      /* the row is the receipt, and the plate rolls to the new figure */
-      flashLast();
-      Plate.roll(before);
-    }
+  /* The key you pressed supplies the sign — UNLESS what you typed carries a
+     direction of its own. g5 and t5 already mean one (lending is money out,
+     collecting is money in), so prepending the key's sign would turn them
+     into -g5, which parseAmount rightly refuses. */
+  const expr = () => (/^[+\-gt]/i.test(C.raw) ? C.raw : C.sign + C.raw);
 
-    function fail(message, focusOn) {
-      err.textContent = message;
-      err.hidden = false;
-      focusOn.focus();
-      focusOn.select();
-    }
+  /* ---------- the keyboard lift ----------
 
-    for (const input of [amountInput, reasonInput, personInput]) {
-      /* Enter saves. The preventDefault is the entire point of this line and not
-         tidiness: submit() closes the sheet, and closeSheet() hands focus back
-         to the key that opened it. Without it the browser then carries out the
-         Enter's DEFAULT action against whatever holds focus by then — which is
-         that key — so the sheet reopens by itself the instant you save, with
-         nobody having touched + or -. Android's "Done" is an ordinary Enter, so
-         this was every save made from the on-screen keyboard. */
-      input.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        submit();
-      });
-    }
+     The visual viewport shrinks when the keyboard opens; the layout viewport
+     does not. That difference IS the keyboard's height, and it is the only
+     honest way to know it — every published figure is a guess that is wrong
+     on some device, some language, or some third-party keyboard.
 
-    openSheet(out ? 'Money out' : 'Money in', body, [
-      ['Cancel', 'ghost', closeSheet],
-      ['Save', 'primary', submit],
-    ]);
+     Without this the bar sits under the keyboard for the whole of entry,
+     which is the entire reason the balance could never be seen changing. */
+  const vv = window.visualViewport;
+  function lift() {
+    const px = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    document.body.style.setProperty('--kb', px + 'px');
   }
+  if (vv) {
+    vv.addEventListener('resize', lift);
+    vv.addEventListener('scroll', lift);
+  }
+
+  function setChipsH(px) { document.body.style.setProperty('--chips', px); }
+  function setPad(on) {
+    document.body.style.setProperty('--pad', on ? PAD_H : 0);
+    kbd.classList.toggle('is-up', !!on);
+  }
+
+  /* ---------- the amount pad ----------
+
+     Digits only, by construction: a pad cannot type a letter, a decimal point
+     or a fifth digit, so most of parseAmount's error strings become
+     unreachable. ⌨ is still there for g5 and t5. */
+
+  function padKey(label, cls, run) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'kk' + (cls ? ' ' + cls : '');
+    b.textContent = label;
+    if (run) b.addEventListener('click', run);
+    return b;
+  }
+
+  function buildPad() {
+    kbd.textContent = '';
+    for (const row of ['12345', '67890']) {
+      const r = document.createElement('div');
+      r.className = 'kr';
+      for (const ch of row) r.appendChild(padKey(ch, '', () => padDigit(ch)));
+      kbd.appendChild(r);
+    }
+    const last = document.createElement('div');
+    last.className = 'kr';
+    last.append(
+      padKey('⌫', 'mod', padBack),
+      padKey('', 'hole'),
+      padKey('⌨', 'mod', () => useLetters(true)));
+    kbd.appendChild(last);
+  }
+  buildPad();
+
+  function padDigit(ch) {
+    if (C.beat !== 1 || C.busy) return;
+    if (C.raw.replace(/\D/g, '').length >= 4) return;
+    if (!C.raw && ch === '0') return;
+    setRaw(C.raw + ch);
+  }
+
+  function padBack() {
+    if (C.beat !== 1 || C.busy) return;
+    if (!C.raw) { cancelCompose(); return; }
+    setRaw(C.raw.slice(0, -1));
+  }
+
+  function setRaw(v) {
+    C.raw = v;
+    composeInput.value = v;
+    syncSign();
+    paintKeys();
+    draft();
+  }
+
+  /* ---------- who gets the caret ----------
+
+     Focus is what summons the OS keyboard, and inputmode="none" is what asks
+     for the caret without it. So the input is focused throughout — a physical
+     keyboard therefore works on a laptop at every beat — and the mode alone
+     decides whether a phone raises anything.
+
+     Changing inputmode on a focused field is ignored by some browsers, so the
+     field is blurred and refocused around it. */
+  function setMode(mode) {
+    const was = document.activeElement === composeInput;
+    if (composeInput.getAttribute('inputmode') === mode && was) return;
+    if (was) { refocus = false; composeInput.blur(); refocus = true; }
+    composeInput.setAttribute('inputmode', mode);
+    focusField();
+  }
+
+  let refocus = true;
+  function focusField() {
+    if (composeInput.hidden) return;
+    composeInput.focus({ preventScroll: true });
+    const n = composeInput.value.length;
+    try { composeInput.setSelectionRange(n, n); } catch (_) { /* not a text type */ }
+  }
+
+  /* beat 1: the pad, or the letters for g5 / t5 */
+  function useLetters(on) {
+    if (C.beat === 1) {
+      setPad(!on);
+      setMode(on ? 'text' : 'none');
+      return;
+    }
+    if (C.beat === 2) {
+      chipKbd.classList.toggle('is-on', on);
+      setMode(on ? 'text' : 'none');
+      if (on) showChips(false, true); else syncChips(true);
+    }
+  }
+
+  /* ---------- the chips ---------- */
+
+  function buildChips() {
+    chipscroll.textContent = '';
+    for (const label of (C.sign === '-' ? CHIPS_OUT : CHIPS_IN)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.textContent = label;
+      b.addEventListener('click', () => pickChip(label, b));
+      chipscroll.appendChild(b);
+    }
+    chipscroll.scrollLeft = 0;
+    chipEdges();
+  }
+
+  /* Fade only the edge that actually has something past it, so at rest on
+     the left the first chip is never faded. */
+  function chipEdges() {
+    const max = chipscroll.scrollWidth - chipscroll.clientWidth;
+    chipscroll.classList.toggle('fade-l', chipscroll.scrollLeft > 2);
+    chipscroll.classList.toggle('fade-r', max > 2 && chipscroll.scrollLeft < max - 2);
+  }
+  chipscroll.addEventListener('scroll', chipEdges, { passive: true });
+
+  let chipSeq;
+  function showChips(on, fade) {
+    clearTimeout(chipSeq);
+    setChipsH(on ? CHIP_H : 0);
+    if (on) {
+      chiprow.hidden = false;
+      chiprow.classList.remove('is-out');
+      return;
+    }
+    if (fade && !reduced) {
+      chiprow.classList.add('is-out');
+      chipSeq = setTimeout(() => {
+        chiprow.hidden = true;
+        chiprow.classList.remove('is-out');
+      }, 240);
+      return;
+    }
+    /* A hide with no fade only ever happens because the beat itself ended,
+       so the keyboard toggle goes home with it. */
+    chiprow.hidden = true;
+    chiprow.classList.remove('is-out');
+    chipKbd.classList.remove('is-on');
+  }
+
+  /* The strip exists for exactly one condition: beat 2, reason still empty,
+     keyboard not up. Pick one or reach for the letters and it has done its
+     job — 60px back to the ledger and one fewer control on screen. */
+  function syncChips(fade) {
+    const typing = composeInput.getAttribute('inputmode') === 'text';
+    if (C.beat === 2 && !C.why && !typing) { buildChips(); showChips(true); }
+    else showChips(false, fade);
+  }
+
+  /* The chosen chip flies into the field. The value lands in the input at
+     once — state is never behind the animation — and the clone dissolves
+     onto text that is already there. */
+  function flyChip(btn) {
+    if (reduced || !btn) return;
+    const a = btn.getBoundingClientRect();
+    const b = plateWrap.getBoundingClientRect();
+    const s = chipscroll.getBoundingClientRect();
+    if (!a.width || !b.width) return;
+
+    const fly = btn.cloneNode(true);
+    fly.className = 'chip is-fly';
+    /* the strip scrolls, so a chip can start partly outside it; fly from
+       where it is actually visible, and pin the box so nothing re-measures it */
+    const x0 = Math.min(Math.max(a.left, s.left), Math.max(s.left, s.right - a.width));
+    fly.style.left = x0 + 'px';
+    fly.style.top = a.top + 'px';
+    fly.style.width = a.width + 'px';
+    fly.style.height = a.height + 'px';
+    document.body.appendChild(fly);
+
+    const u = parseFloat(getComputedStyle(document.documentElement)
+      .getPropertyValue('--u')) || 1;
+    const tx = b.left + 107 * u - x0;
+    const ty = b.top + (b.height - a.height) / 2 - a.top;
+    requestAnimationFrame(() => {
+      fly.style.transform = 'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px)';
+      fly.style.opacity = '0';
+    });
+    setTimeout(() => fly.remove(), 320);
+  }
+
+  function pickChip(label, btn) {
+    if (C.beat !== 2 || C.busy || C.why) return;
+    C.why = label;
+    composeInput.value = label;
+    flyChip(btn);
+    syncChips(true);
+    paintKeys();
+    draft();
+  }
+
+  /* ---------- the field ---------- */
+
+  function fieldLabel(text, sign) {
+    const box = document.createElement('span');
+    box.className = 'pl-field';
+    box.textContent = text;
+    if (sign) {
+      const s = document.createElement('span');
+      s.className = 'pl-sign';
+      s.textContent = sign;
+      box.appendChild(s);
+    }
+    return box;
+  }
+
+  /* `focus` only counts as a user gesture inside the handler of one, so every
+     call site below is reached synchronously from a click. `mode` is what a
+     phone reads: 'none' keeps the caret and raises nothing. */
+  function openField(label, sign, value, word, mode, hint) {
+    clearTimeout(plateSeq);          /* no parked rest() may steal the field */
+    plateSwap(fieldLabel(label, sign));
+    composeInput.hidden = false;
+    composeInput.classList.toggle('is-word', !!word);
+    composeInput.setAttribute('enterkeyhint', C.beat === 3 ? 'done' : 'next');
+    composeInput.placeholder = hint || '';
+    composeInput.value = value || '';
+    composeInput.setAttribute('inputmode', mode);
+    focusField();
+  }
+
+  function closeField() {
+    refocus = false;
+    composeInput.hidden = true;
+    composeInput.value = '';
+    composeInput.blur();
+    refocus = true;
+  }
+
+  /* ---------- the draft row ----------
+
+     Beat 2 puts the reason on the plate, so without this the amount you just
+     typed would be nowhere on screen. */
+  let draftRow = null;
+
+  function draft() {
+    if (draftRow && draftRow.parentNode) draftRow.remove();
+    draftRow = null;
+    if (C.beat === 0 || C.busy) return;
+
+    const parsed = parseAmount(expr());
+    const amount = (C.raw && !parsed.error) ? Number(parsed.amount) : null;
+    const delta = amount == null ? null
+      : (parsed.op === '+' ? amount : -amount);
+
+    const row = document.createElement('div');
+    row.className = 'row is-draft';
+
+    const when = document.createElement('div');
+    when.className = 'cell c-when';
+    const inner = document.createElement('span');
+    inner.className = 'when-in';
+    const num = document.createElement('span');
+    num.className = 'daynum';
+    num.textContent = String(C.when.getDate());
+    const t = document.createElement('span');
+    t.className = 't';
+    t.textContent = clock(C.when);
+    inner.append(num, t);
+    when.appendChild(inner);
+
+    const why = cell('c-reason', C.why || '');
+    if (C.beat >= 2) why.classList.add('is-live');
+
+    const flowCell = cell('c-flow',
+      (parsed.op === '+' ? '+' : '-') + '₹' + (C.raw ? group(amount == null ? 0 : amount) : ''));
+    if (parsed.op !== '+') flowCell.classList.add('is-out');
+    if (C.beat === 1) flowCell.classList.add('is-live');
+
+    const bal = cell('c-bal', delta == null ? '·' : group(state.current + delta));
+
+    row.append(when, why, flowCell, bal);
+    draftRow = row;
+    card.hidden = false;
+    card.appendChild(row);
+    blankNote.hidden = true;
+  }
+
+  /* ---------- the keys ---------- */
+
+  function paintKeys() {
+    if (C.beat === 0) {
+      btnIn.className = 'key k-in';
+      btnOut.className = 'key k-out';
+      btnIn.setAttribute('aria-label', 'Money in');
+      btnOut.setAttribute('aria-label', 'Money out');
+      keyGlyph(btnIn, 'plus');
+      keyGlyph(btnOut, 'minus');
+      return;
+    }
+    /* composing: the direction is already chosen, so + collapses and −
+       becomes the only way forward */
+    btnIn.className = 'key k-in is-gone';
+    const armed = C.beat === 1 ? !!C.raw : (C.beat === 2 ? !!C.why.trim() : !!C.who.trim());
+    btnOut.className = 'key k-out ' + (armed ? 'is-go' : 'is-cold');
+    btnOut.setAttribute('aria-label', C.beat === 1 ? 'Next' : 'Save');
+    keyGlyph(btnOut, C.beat === 1 ? 'next' : 'tick');
+  }
+
+  const GLYPHS = {
+    plus:  'M9 1.5V16.5M1.5 9H16.5',
+    minus: 'M1.5 9H16.5',
+    next:  'M1.5 9H16.5M10 2.5L16.5 9L10 15.5',
+    tick:  'M2 9.5L7 14.5L16 3.5',
+  };
+  function keyGlyph(btn, name) {
+    btn.textContent = '';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    /* #btnOut .icon is locked to 4u tall for the minus bar, so anything that
+       is not the minus has to say it is square */
+    svg.setAttribute('class', 'icon' + (name === 'minus' ? '' : ' is-square'));
+    svg.setAttribute('viewBox', '0 0 18 18');
+    svg.setAttribute('width', '18');
+    svg.setAttribute('height', '18');
+    svg.setAttribute('aria-hidden', 'true');
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', GLYPHS[name]);
+    p.setAttribute('fill', 'none');
+    p.setAttribute('stroke', 'currentColor');
+    p.setAttribute('stroke-width', '3');
+    p.setAttribute('stroke-linecap', 'round');
+    p.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(p);
+    btn.appendChild(svg);
+  }
+
+  /* ---------- the beats ---------- */
+
+  function startCompose(sign) {
+    if (C.busy || C.beat !== 0) return;
+    C.beat = 1;
+    C.sign = sign;
+    C.raw = '';
+    C.why = '';
+    C.who = '';
+    C.when = new Date();
+    showChips(false);
+    setPad(true);
+    /* the pad types the digits; the caret is the field's own, and inputmode
+       none is what stops a phone raising a second keyboard over it */
+    openField('₹', sign, '', false, 'none', '');
+    paintKeys();
+    draft();
+    toBottom();
+    if (window.Mascot) window.Mascot.wake();
+  }
+
+  function nextBeat() {
+    if (C.busy) return;
+
+    if (C.beat === 1) {
+      if (!C.raw) return;
+      const parsed = parseAmount(expr());
+      if (parsed.error) { plateWarn(parsed.error); return; }
+      C.beat = 2;
+      setPad(false);
+      /* the chips are the point: beat 2 opens with NOTHING under the bar, so
+         it comes home and the ledger stays visible while you pick */
+      openField('?', null, C.why, true, 'none', 'why?');
+      syncChips();
+      paintKeys();
+      draft();
+      toBottom();
+      return;
+    }
+
+    if (C.beat === 2) {
+      if (!C.why.trim()) return;
+      const parsed = parseAmount(expr());
+      if (parsed.person) {
+        C.beat = 3;
+        showChips(false);
+        setPad(false);
+        openField('name', null, C.who, true, 'text', 'who?');
+        paintKeys();
+        draft();
+        return;
+      }
+      commit();
+      return;
+    }
+
+    if (C.beat === 3) {
+      if (!C.who.trim()) return;
+      commit();
+    }
+  }
+
+  function backBeat() {
+    if (C.busy) return;
+    if (C.beat === 3) {
+      C.beat = 2;
+      openField('?', null, C.why, true, 'none', 'why?');
+      syncChips();
+      paintKeys();
+      draft();
+      return;
+    }
+    if (C.beat === 2) {
+      /* reaching for the letters and then giving up puts them away before it
+         gives up the beat — one press per thing you opened */
+      if (composeInput.getAttribute('inputmode') === 'text') { useLetters(false); return; }
+      C.beat = 1;
+      showChips(false);
+      setPad(true);
+      openField('₹', C.sign, C.raw, false, 'none', '');
+      paintKeys();
+      draft();
+      return;
+    }
+    if (C.beat === 1 && composeInput.getAttribute('inputmode') === 'text') {
+      useLetters(false);   /* the g/t keyboard goes before the beat does */
+      return;
+    }
+    cancelCompose();
+  }
+
+  function cancelCompose(message) {
+    C.beat = 0;
+    C.raw = '';
+    C.why = '';
+    C.who = '';
+    C.busy = false;
+    closeField();
+    showChips(false);
+    setPad(false);
+    paintKeys();
+    render();
+    if (message) Plate.say(message); else Plate.rest();
+  }
+
+  function plateWarn(text) {
+    /* the field keeps what you typed; the plate says what is wrong and then
+       goes back to being a field */
+    const keep = composeInput.value;
+    Plate.say(text);
+    setTimeout(() => {
+      if (C.beat !== 1) return;
+      plateSwap(fieldLabel('₹', C.sign));
+      composeInput.value = keep;
+      composeInput.focus();
+    }, reduced ? 20 : 1500);
+  }
+
+  /* ---------- commit ----------
+
+     Land, then roll — and in that order for a reason worth keeping.
+
+     Rolling WHILE the bar travels does not read as one gesture: the plate
+     crosses the keyboard's height in 240ms, and a digit flip inside a body
+     moving that fast is masked by it. Same axis is exactly what hides it.
+
+     So the row flash goes first — it is the one thing that stays legible
+     while the bar moves, because the ledger holds still — and the figure
+     rolls on arrival, at rest, where the balance always lives. Cause, then
+     effect, staged rather than stacked.
+
+     The roll is fired from the bar's own transitionend rather than a timer
+     set to match it: two clocks that have to agree eventually will not, and
+     the failure is a figure rolling in mid-air. */
+
+  function commit() {
+    C.busy = true;
+    const before = state.current;
+    const parsed = parseAmount(expr());
+
+    record(state, C.when, parsed.op, parsed.amount, C.why.trim(),
+      parsed.person ? C.who.trim() : null);
+    save();
+
+    C.beat = 0;
+    closeField();
+    showChips(false);
+    setPad(false);
+    paintKeys();
+    render();
+    flashLast();
+
+    /* the plate carries the OLD balance down, so the roll has a from */
+    Plate.hold(before);
+    lift();
+
+    let fired = false;
+    const payoff = () => {
+      if (fired) return;
+      fired = true;
+      plateEl.classList.remove('is-land');
+      void plateEl.offsetWidth;                 /* let the removal land */
+      if (!reduced) plateEl.classList.add('is-land');
+      Plate.roll(before);
+      setTimeout(() => plateEl.classList.remove('is-land'), 220);
+    };
+
+    const onEnd = (e) => {
+      if (e.propertyName !== 'bottom') return;
+      toolbar.removeEventListener('transitionend', onEnd);
+      payoff();
+    };
+    toolbar.addEventListener('transitionend', onEnd);
+    /* a transition that never starts fires no event — reduced motion, a
+       hidden tab, or a bar that was already home because you used chips */
+    setTimeout(() => { toolbar.removeEventListener('transitionend', onEnd); payoff(); },
+      reduced ? 20 : 300);
+
+    /* Arm the unlock BEFORE anything that can throw. busy is a latch: if
+       toBottom() ever failed, a timer that was never scheduled would leave
+       the whole flow wedged with no way back but a reload. */
+    setTimeout(() => { C.busy = false; }, reduced ? 40 : 820);
+
+    toBottom();
+  }
+
+  /* ---------- input ---------- */
+
+  composeInput.addEventListener('input', () => {
+    if (C.beat === 1) {
+      /* the sign is the key you pressed; it is not part of what you type */
+      C.raw = composeInput.value.replace(/^[+-]+/, '');
+      if (C.raw !== composeInput.value) composeInput.value = C.raw;
+      syncSign();
+    } else if (C.beat === 2) {
+      /* typing straight after a chip refines it, so the space belongs to the
+         app: "Travel" + "cab" is "Travel cab", never "Travelcab" */
+      let v = composeInput.value;
+      if (isChip(C.why) && v.length === C.why.length + 1 && v.indexOf(C.why) === 0) {
+        v = C.why + ' ' + v.slice(C.why.length);
+        composeInput.value = v;
+      }
+      C.why = v;
+    } else if (C.beat === 3) {
+      C.who = composeInput.value;
+    }
+    paintKeys();
+    draft();
+  });
+
+  /* g5 is money out and t5 is money in, so the sign on the plate follows the
+     parse rather than the key — otherwise the label contradicts the row. */
+  function syncSign() {
+    const el = plateEl.querySelector('.pl-layer:not(.out) .pl-sign');
+    if (!el) return;
+    const parsed = parseAmount(expr());
+    el.textContent = parsed.error ? C.sign : (parsed.op === '+' ? '+' : '-');
+  }
+
+  composeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); nextBeat(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); cancelCompose(); return; }
+    if (e.key === 'Backspace' && !composeInput.value) { e.preventDefault(); backBeat(); }
+  });
+
+  /* The caret belongs to the compose, not to whatever was last tapped: every
+     pad key and every chip is a button, and pressing one would otherwise take
+     the focus and drop the caret. `refocus` is lowered only by the code that
+     MEANS the blur — closeField and setMode. */
+  composeInput.addEventListener('blur', () => {
+    if (!refocus || C.busy || C.beat === 0) return;
+    setTimeout(() => {
+      if (C.beat !== 0 && !composeInput.hidden && overlay.hidden &&
+          document.activeElement !== composeInput) focusField();
+    }, 0);
+  });
+
+  chipKbd.addEventListener('click', () => {
+    if (C.beat !== 2 || C.busy) return;
+    useLetters(composeInput.getAttribute('inputmode') !== 'text');
+  });
+
 
   /* ---------- people ---------- */
 
@@ -915,6 +1465,7 @@ You
 
   /* ---------- bottom bar ---------- */
 
+  const toolbar = document.querySelector('.toolbar');
   const btnIn = document.getElementById('btnIn');
   const btnOut = document.getElementById('btnOut');
 
@@ -924,8 +1475,10 @@ You
     scroller.scrollTo({ top: scroller.scrollHeight, behavior: how || behavior });
   }
 
-  btnOut.addEventListener('click', () => newTransaction('-'));
-  btnIn.addEventListener('click', () => newTransaction('+'));
+  btnOut.addEventListener('click', () => {
+    if (C.beat === 0) startCompose('-'); else nextBeat();
+  });
+  btnIn.addEventListener('click', () => { if (C.beat === 0) startCompose('+'); });
   /* ---------- the plate answers two gestures ----------
 
      A tap pokes the cat; a press and hold opens You. They cannot share one
@@ -949,6 +1502,7 @@ You
   let holding = false;
 
   plateEl.addEventListener('pointerdown', () => {
+    if (C.beat !== 0 || C.busy) return;   /* mid-entry the plate is a field */
     holding = true;
     if (window.Mascot) window.Mascot.press(true, () => { holding = false; showYou(); });
   });
@@ -981,7 +1535,9 @@ You
   }, { passive: true });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !overlay.hidden) closeSheet();
+    if (e.key !== 'Escape') return;
+    if (!overlay.hidden) { closeSheet(); return; }
+    if (C.beat !== 0) cancelCompose();
   });
 
   /* ---------- first paint ---------- */
