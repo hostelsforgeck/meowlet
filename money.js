@@ -713,20 +713,10 @@
      The keyboard is the one the person already has: Gboard on a phone, the
      physical one on a laptop. Nothing here draws keys.
 
-     Focus is what summons it, and `inputmode` is what it comes up as —
-     'numeric' for the amount, 'text' for a reason or a name, 'none' for the
-     beat that is answered by chips and needs the caret but no keyboard. A
-     laptop ignores inputmode entirely and simply types.
-
-     Changing inputmode on a focused field is ignored by some browsers, so the
-     field is blurred and refocused around it. */
-  function setMode(mode) {
-    const was = document.activeElement === composeInput;
-    if (composeInput.getAttribute('inputmode') === mode && was) return;
-    if (was) { refocus = false; composeInput.blur(); refocus = true; }
-    composeInput.setAttribute('inputmode', mode);
-    focusField();
-  }
+     Focus is what summons it, and `inputmode` says what it comes up as —
+     'numeric' for the amount, 'text' for a reason or a name. A laptop ignores
+     inputmode entirely and simply types. Every beat raises it, so no beat
+     needs asking twice. */
 
   let refocus = true;
   function focusField() {
@@ -734,16 +724,6 @@
     composeInput.focus({ preventScroll: true });
     const n = composeInput.value.length;
     try { composeInput.setSelectionRange(n, n); } catch (_) { /* not a text type */ }
-  }
-
-  /* Beat 2 opens with inputmode=none: the caret is there, the chips are
-     there, and nothing has covered the ledger. TAPPING THE FIELD is what asks
-     for the letters — the same gesture as every other app on the phone, and
-     one that needs no button of its own. */
-  function useLetters(on) {
-    if (C.beat !== 2) return;
-    setMode(on ? 'text' : 'none');
-    if (on) showChips(false, true); else syncChips(true);
   }
 
   /* ---------- the chips ---------- */
@@ -798,9 +778,11 @@
   /* The strip belongs to the reason and to nothing else: beat 2, still empty,
      not typing. Beat 1 is an amount — it has no categories, so it gets no
      strip, and the keyboard key has nothing to float on. */
+  /* The strip belongs to one condition: beat 2, no reason yet. The keyboard
+     is up throughout now, so it is no longer part of the question — the chips
+     simply sit above it until one of them, or the keyboard, answers. */
   function syncChips(fade) {
-    const typing = composeInput.getAttribute('inputmode') === 'text';
-    if (C.beat === 2 && !C.why && !typing) { buildChips(); showChips(true); }
+    if (C.beat === 2 && !C.why) { buildChips(); showChips(true); }
     else showChips(false, fade);
   }
 
@@ -867,7 +849,7 @@
 
   /* `focus` only counts as a user gesture inside the handler of one, so every
      call site below is reached synchronously from a click. `mode` is what a
-     phone reads: 'none' keeps the caret and raises nothing. */
+     phone reads, and every beat here wants a keyboard. */
   function openField(sign, value, word, mode, hint) {
     clearTimeout(plateSeq);          /* no parked rest() may steal the field */
     plateSwap(fieldLabel(sign));
@@ -1016,7 +998,7 @@
       C.beat = 2;
       /* the chips are the point: beat 2 opens with NOTHING under the bar, so
          it comes home and the ledger stays visible while you pick */
-      openField(null, C.why, true, 'none', 'why?');
+      openField(null, C.why, true, 'text', 'why?');
       syncChips();
       paintKeys();
       draft();
@@ -1049,16 +1031,13 @@
     if (C.busy) return;
     if (C.beat === 3) {
       C.beat = 2;
-      openField(null, C.why, true, 'none', 'why?');
+      openField(null, C.why, true, 'text', 'why?');
       syncChips();
       paintKeys();
       draft();
       return;
     }
     if (C.beat === 2) {
-      /* reaching for the letters and then giving up puts them away before it
-         gives up the beat — one press per thing you opened */
-      if (composeInput.getAttribute('inputmode') === 'text') { useLetters(false); return; }
       C.beat = 1;
       openField(C.sign, C.raw, false, 'numeric', '');
       showChips(false);
@@ -1224,20 +1203,13 @@
   /* The caret belongs to the compose, not to whatever was last tapped: every
      pad key and every chip is a button, and pressing one would otherwise take
      the focus and drop the caret. `refocus` is lowered only by the code that
-     MEANS the blur — closeField and setMode. */
+     MEANS the blur — closeField. */
   composeInput.addEventListener('blur', () => {
     if (!refocus || C.busy || C.beat === 0) return;
     setTimeout(() => {
       if (C.beat !== 0 && !composeInput.hidden && overlay.hidden &&
           document.activeElement !== composeInput) focusField();
     }, 0);
-  });
-
-  /* pointerdown rather than click: a keyboard may only be summoned inside
-     the gesture the browser counts as a user activation. */
-  composeInput.addEventListener('pointerdown', () => {
-    if (C.busy || C.beat !== 2) return;
-    if (composeInput.getAttribute('inputmode') !== 'text') useLetters(true);
   });
 
 
