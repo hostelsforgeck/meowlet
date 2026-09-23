@@ -678,23 +678,33 @@
      into -g5, which parseAmount rightly refuses. */
   const expr = () => (/^[+\-gt]/i.test(C.raw) ? C.raw : C.sign + C.raw);
 
-  /* ---------- the keyboard lift ----------
+  /* ---------- the app follows the visible area ----------
 
-     The visual viewport shrinks when the keyboard opens; the layout viewport
-     does not. That difference IS the keyboard's height, and it is the only
-     honest way to know it — every published figure is a guess that is wrong
-     on some device, some language, or some third-party keyboard.
+     The keyboard does not resize the LAYOUT viewport, and `.app` is fixed to
+     that — so its floor, and the bar standing on it, ended up underneath the
+     keyboard. Subtracting a keyboard height from the bar's offset was the
+     wrong shape of fix: it needs innerHeight and visualViewport.height to
+     agree about what a screen is, and on a phone they quietly do not.
 
-     Without this the bar sits under the keyboard for the whole of entry,
-     which is the entire reason the balance could never be seen changing. */
+     So the app is simply given the visible area as its size. Nothing is
+     measured, nothing is guessed, and `bottom: 12u` lands where it reads. */
   const vv = window.visualViewport;
+
   function lift() {
-    const px = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
-    document.body.style.setProperty('--kb', px + 'px');
+    if (!vv) return;
+    /* Pinch-zoom shrinks the visual viewport too, and resizing the app to a
+       zoomed view would fight the zoom instead of helping it. */
+    const zoomed = vv.scale > 1.01;
+    const h = zoomed ? window.innerHeight : vv.height;
+    const top = zoomed ? 0 : vv.offsetTop;
+    document.body.style.setProperty('--vh', h + 'px');
+    document.body.style.setProperty('--vtop', top + 'px');
   }
+
   if (vv) {
     vv.addEventListener('resize', lift);
     vv.addEventListener('scroll', lift);
+    lift();
   }
 
   function setChipsH(px) { document.body.style.setProperty('--chips', px); }
@@ -1136,15 +1146,19 @@
       setTimeout(() => plateEl.classList.remove('is-land'), 220);
     };
 
+    /* The bar no longer moves relative to the app; the APP resizes as the
+       keyboard goes, and the bar rides down with it. So that is the
+       transition the roll waits on. */
+    const app = document.querySelector('.app');
     const onEnd = (e) => {
-      if (e.propertyName !== 'bottom') return;
-      toolbar.removeEventListener('transitionend', onEnd);
+      if (e.propertyName !== 'height') return;
+      app.removeEventListener('transitionend', onEnd);
       payoff();
     };
-    toolbar.addEventListener('transitionend', onEnd);
+    app.addEventListener('transitionend', onEnd);
     /* a transition that never starts fires no event — reduced motion, a
        hidden tab, or a bar that was already home because you used chips */
-    setTimeout(() => { toolbar.removeEventListener('transitionend', onEnd); payoff(); },
+    setTimeout(() => { app.removeEventListener('transitionend', onEnd); payoff(); },
       reduced ? 20 : 300);
 
     /* Arm the unlock BEFORE anything that can throw. busy is a latch: if

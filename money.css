@@ -559,22 +559,32 @@
      · one key collapses while composing, so the bar is two objects
    ============================================================ */
 
-/* The keyboard's height and the chip strip's, both in reference px.
-   --kb is the only thing between the bar and the floor; --chips sits
-   above the bar, so it costs the ledger rather than the bar. */
-.money { --kb: 0px; --chips: 0; }
+/* --chips sits above the bar, so it costs the ledger rather than the bar. */
+.money { --chips: 0; }
 
-/* The bar rides the keyboard. --kb is a real px length read from
-   visualViewport, not a reference unit — the OS keyboard is whatever
-   height it is, so this is the one measurement we do not scale. */
+/* ---------- the app IS the visible area ----------
+
+   `position: fixed; inset: 0` pins to the LAYOUT viewport, and that does not
+   shrink when the keyboard opens — so the bottom of the app, and the bar on
+   it, sat underneath the keyboard. Sizing to visualViewport instead means no
+   keyboard height is ever guessed or corrected for: whatever the OS raises,
+   the app stops exactly on top of it.
+
+   --vh and --vtop are real px, written by the script. The 100% fallback is
+   what a browser without visualViewport gets, which is what it had before. */
+.money .app {
+  top: var(--vtop, 0px);
+  bottom: auto;
+  height: var(--vh, 100%);
+  transition: height .24s var(--ease-out), top .24s var(--ease-out);
+}
+
 .money .toolbar {
-  bottom: calc(var(--kb) + var(--bar-bottom) * var(--u)
-               + env(safe-area-inset-bottom, 0px));
-  transition: bottom var(--travel, 240ms) var(--ease-out);
+  bottom: calc(var(--bar-bottom) * var(--u) + env(safe-area-inset-bottom, 0px));
 }
 
 .money .scroller {
-  padding-bottom: calc((106 + var(--chips)) * var(--u) + var(--kb)
+  padding-bottom: calc((106 + var(--chips)) * var(--u)
                        + env(safe-area-inset-bottom, 0px));
   transition: padding-bottom var(--travel, 240ms) var(--ease-out);
 }
@@ -706,7 +716,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--kb) + (var(--bar-bottom) + var(--bar-h) + 10) * var(--u)
+  bottom: calc((var(--bar-bottom) + var(--bar-h) + 10) * var(--u)
                + env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: center;
@@ -818,7 +828,7 @@
 .money .row.is-draft .c-bal { color: #cfcfcf; }
 
 @media (prefers-reduced-motion: reduce) {
-  .money .toolbar, .money .chiprow, .money .scroller { transition: none; }
+  .money .app, .money .toolbar, .money .chiprow, .money .scroller { transition: none; }
 }
 
 
