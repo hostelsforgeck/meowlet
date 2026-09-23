@@ -860,6 +860,9 @@
     composeInput.value = value || '';
     composeInput.setAttribute('inputmode', mode);
     focusField();
+    /* Any other beat puts him back to idle; coming BACK to beat 1 with an
+       amount already typed picks the pose straight up again. */
+    if (word) catRest(); else catTyped();
   }
 
   function closeField() {
@@ -868,6 +871,7 @@
     composeInput.value = '';
     composeInput.blur();
     refocus = true;
+    catRest();
   }
 
   /* ---------- the draft row ----------
@@ -1163,6 +1167,7 @@
       }
       C.raw = v;
       syncSign();
+      catTyped();
     } else if (C.beat === 2) {
       /* typing straight after a chip refines it, so the space belongs to the
          app: "Travel" + "cab" is "Travel cab", never "Travelcab" */
@@ -1192,6 +1197,36 @@
     const op = parsed.error ? C.sign : parsed.op;
     el.textContent = op === '+' ? '+' : '\u2212';
     el.classList.toggle('is-out', op !== '+');
+  }
+
+  /* ---------- the cat ----------
+
+     He lives on the plate, so while beat 1 is running he answers the digits:
+     a brace that scales with the amount, a glance up at the figure on a
+     spend, stars and a hop on money in. He is optional — every call is
+     guarded — and he is TOLD what happened rather than left to work it out,
+     the same bargain poke() and mood() already make.
+
+     The sign is the PARSE's, not the key's, for the reason syncSign gives:
+     g5 is money out whichever key opened the field. */
+  let catSeen = 0;
+
+  function catTyped() {
+    if (!window.Mascot || !window.Mascot.type) return;
+    const digits = String(C.raw).replace(/\D/g, "");
+    const parsed = parseAmount(expr());
+    window.Mascot.type({
+      digits: digits.length,
+      amount: Number(digits || 0),
+      sign: parsed.error ? C.sign : parsed.op,
+      added: digits.length > catSeen,   /* the one-shots fire on the landing */
+    });
+    catSeen = digits.length;
+  }
+
+  function catRest() {
+    catSeen = 0;
+    if (window.Mascot && window.Mascot.rest) window.Mascot.rest();
   }
 
   composeInput.addEventListener('keydown', (e) => {

@@ -150,6 +150,22 @@ window.Mascot = (function () {
     outFlinch: 5, outSink: 8, outMs: 1250,       /* money out */
     tapSwing: 3.2, tapJolt: 2, tapMs: 600,       /* poked: first swing, and the jolt */
 
+    /* ---- being typed at ----
+       The reaction while an amount is on the plate. Every number here was
+       argued out in assets/mascot-input.html against the real geometry; the
+       comments on what each one does are with the rules, in css().
+
+       braceAt is the amount the tension tops out at. 5000 is not a limit,
+       it is where the dial runs out: the plate takes four digits, so 9999
+       lands past the top with a little of the scale left unspent, which is
+       what keeps 900 from already looking like the worst day of the year. */
+    braceAt: 5000,
+    braceEar: 9, braceEye: 0.30, braceSink: 6,      /* the spend, on the dial */
+    braceLook: 8, braceLift: 4, glanceMs: 760,      /* ...and the look up at it */
+    upEye: 0.55, upGain: 1,                         /* the income */
+    sparkMs: 820, sparkStep: 90,                    /* a star per digit */
+    hopMs: 440, hopBy: 5,                           /* and a hop under it */
+
     fur:    '#ffffff',
     ink:    '#121212',  /* the cut-out colour: whatever is behind the cat */
     inkDim: '#1c1c1c'   /* ...and what that becomes while the host is pressed */
@@ -193,6 +209,10 @@ window.Mascot = (function () {
 
   const EAR = 'M23.83 0C23.34 0.1 22.08 -0.03 20.87 0.57C19.67 1.18 17.65 2.28 16.61 3.61C15.57 4.94 15.16 6.48 14.64 8.53C14.12 10.58 13.78 13.59 13.49 15.91C13.21 18.24 13.1 20.15 12.92 22.47C12.74 24.8 12.78 27.81 12.43 29.86C12.07 31.91 11.45 33.41 10.79 34.78C10.13 36.14 8.85 37.51 8.47 38.06L14.31 41.34L43.84 22.47L48.19 15.99C47.64 15.57 46.47 14.7 44.91 13.45C43.35 12.21 40.98 10.17 38.84 8.53C36.69 6.89 33.96 4.94 32.03 3.61C30.1 2.28 28.56 1.18 27.27 0.57C25.99 -0.03 24.81 0.1 24.32 0A.4 .4 0 0 1 23.83 0Z';
 
+  /* A four-point star drawn around its own origin, so the wrapper places it
+     and the scale finds its middle. */
+  const STAR = 'M0 -5C.6 -1.6 1.6 -.6 5 0C1.6 .6 .6 1.6 0 5C-.6 1.6 -1.6 .6 -5 0C-1.6 -.6 -.6 -1.6 0 -5Z';
+
   const SVG = [
     '<g class="m-tilt">',
     '  <path class="m-body" d="' + BODY + '" />',
@@ -223,6 +243,11 @@ window.Mascot = (function () {
        carries it along instead of leaving it behind on the face */
     '      <path class="m-joy" d="M36.1 61.3Q40.31 51.6 44.54 61.3" />',
     '      <path class="m-joy" d="M75.47 61.3Q79.69 51.6 83.91 61.3" />',
+    /* A catchlight per eye, for money coming in. Both sit up and to the LEFT
+       of their pupil, because two dots on opposite sides are two light
+       sources and the face stops reading as one face. */
+    '      <circle class="m-glint g-l" cx="39" cy="54.1" r="1.5" />',
+    '      <circle class="m-glint g-r" cx="78.4" cy="54.1" r="1.5" />',
     '    </g>',
     '    </g>',
     '    <ellipse class="m-nose" cx="60" cy="67.75" rx="4.88" ry="3.53" />',
@@ -235,7 +260,15 @@ window.Mascot = (function () {
     '  <path class="m-z m-z1" d="M-4.5 -4.5H4.5L-4.5 4.5H4.5" />',
     '  <path class="m-z m-z2" d="M-4.5 -4.5H4.5L-4.5 4.5H4.5" />',
     '  <path class="m-z m-z3" d="M-4.5 -4.5H4.5L-4.5 4.5H4.5" />',
-    '</g>'
+    '</g>',
+    /* Four stars, in the same strip of sky the z-s fly through — so they are
+       known to be visible above his ears and known to clear the figure. Each
+       is wrapped in its own g: the translate lives on the wrapper, which
+       leaves the star's own transform free for the animation. */
+    '<g transform="translate(98,-4) scale(1.4)"><path class="m-spark s1" d="' + STAR + '" /></g>',
+    '<g transform="translate(116,-18) scale(1.15)"><path class="m-spark s2" d="' + STAR + '" /></g>',
+    '<g transform="translate(79,-25) scale(1)"><path class="m-spark s3" d="' + STAR + '" /></g>',
+    '<g transform="translate(58,-14) scale(.85)"><path class="m-spark s4" d="' + STAR + '" /></g>'
   ].join('\n');
 
   /* ---------- the stylesheet ----------
@@ -695,6 +728,135 @@ window.Mascot = (function () {
   12%      { transform: scaleY(.72) scaleX(1.06); }
   36%      { transform: scaleY(1.03); }
   62%      { transform: scaleY(.98); }
+}
+
+/* ========== being typed at ==========
+
+   What he does WHILE an amount is on the plate. Everything below reads one
+   number, --tense, which the host's digits set: 0 for nothing typed, 1 at
+   ${C.braceAt}. Log, not linear — the step from 50 to 500 matters far more
+   than the one from 9,000 to 9,500, and a linear dial spends almost all of
+   its travel on amounts nobody types.
+
+   The idle is five layers on four periods, all of them animations, and an
+   inline transform loses to a running animation every time. So every rule
+   here first stops the part it poses. That also means the pose has to yield
+   to sleep, or a dozing cat wears a wide-awake face under his own z's —
+   hence :not(.is-doze) on every one of them. */
+
+.m-cat.is-brace:not(.is-doze) .m-ear-l,
+.m-cat.is-brace:not(.is-doze) .m-ear-r {
+  animation: none !important;
+  transition: transform .18s var(--ease-out);
+  transform: rotate(calc(var(--tense, 0) * ${-C.braceEar}deg))
+             scaleY(calc(1 - var(--tense, 0) * .24));
+}
+.m-cat.is-brace:not(.is-doze) .m-eye {
+  animation: none !important;
+  transition: transform .18s var(--ease-out);
+  transform: scaleY(calc(1 + var(--tense, 0) * ${C.braceEye}))
+             scaleX(calc(1 + var(--tense, 0) * ${(C.braceEye * 0.6).toFixed(3)}));
+}
+.m-cat.is-brace:not(.is-doze) {
+  animation: none !important;
+  transition: transform .18s var(--ease-out);
+  transform: translateY(calc(var(--tense, 0) * ${C.braceSink}px));
+}
+
+/* ---- money out: he checks the figure, then checks you ----
+
+   Not a held turn: a pose that faces away reads as sulking, and at four
+   digits he would show you a cheek for as long as you were typing. The
+   figure sits ABOVE his eyeline as well as beside it — his eyes are about
+   13 reference px off the floor of the plate and the digits are centred at
+   36 — so the look goes up as well as across, or it passes them by.
+
+   m-look is the whole face, because at this size moving the eyes alone is
+   two pixels and reads as nothing; the eyes then carry a little further, the
+   way a head turns and the eyes finish the turn. Facing you is the resting
+   state, so coming back costs nothing to say: it is where it ends. */
+.m-cat.is-brace:not(.is-doze).is-glance .m-look {
+  animation: m-glance ${C.glanceMs}ms var(--ease-out);
+}
+.m-cat.is-brace:not(.is-doze).is-glance .m-eyes {
+  animation: m-glance-eyes ${C.glanceMs}ms var(--ease-out);
+}
+@keyframes m-glance {
+  0%       { transform: translate(0, 0); }
+  32%, 60% { transform: translate(${C.braceLook}px, ${-C.braceLift}px); }
+  100%     { transform: translate(0, 0); }
+}
+@keyframes m-glance-eyes {
+  0%       { transform: translate(0, 0); }
+  32%, 60% { transform: translate(${(C.braceLook * 0.4).toFixed(2)}px, ${(-C.braceLift * 0.4).toFixed(2)}px); }
+  100%     { transform: translate(0, 0); }
+}
+
+/* ---- money in ----
+   The ears and the head stay out of it: a cat braced AND delighted is a cat
+   with two feelings. */
+.m-cat.is-brace:not(.is-doze).is-up .m-ear-l,
+.m-cat.is-brace:not(.is-doze).is-up .m-ear-r { transform: none; }
+
+/* the eyes · pupils blow open, and a catchlight comes up in each. Both dots
+   sit on the same side of their eye: one light source, not two. The dot
+   rides the same growth as the eye it sits in, so it stays put on the curve
+   instead of sliding off it. */
+.m-cat .m-glint {
+  fill: ${C.fur};
+  opacity: 0;
+  transform-box: view-box;
+  transition: transform .18s var(--ease-out), opacity .18s linear;
+}
+.m-cat .m-glint.g-l { transform-origin: 40.315px 57.42px; }   /* its eye's centre */
+.m-cat .m-glint.g-r { transform-origin: 79.695px 57.42px; }
+.m-cat.is-brace:not(.is-doze).is-up .m-eye,
+.m-cat.is-brace:not(.is-doze).is-up .m-glint {
+  transform: scaleX(calc(1 + var(--tense, 0) * ${C.upEye}))
+             scaleY(calc(1 + var(--tense, 0) * ${(C.upEye * 0.6).toFixed(3)}));
+}
+.m-cat.is-brace:not(.is-doze).is-up .m-glint { opacity: var(--tense, 0); }
+
+/* the sky · one star per DIGIT, fired once as that digit lands, and then
+   gone. Not a loop: a twinkle that keeps going is weather, and weather is
+   what the eye files as texture and stops seeing inside two seconds. A burst
+   arrives and leaves, which is what lets it arrive again. They come in order
+   rather than together — four at once is one flash, four in a cascade is a
+   count you can read without counting. Which stars light is decided in JS,
+   because CSS cannot compare a count to an index without ten selectors that
+   all say the same thing. */
+.m-cat .m-spark { fill: ${C.fur}; opacity: 0; transform-box: fill-box; transform-origin: 50% 50%; }
+.m-cat.is-brace:not(.is-doze).is-up.is-pop .m-spark.is-lit {
+  animation: m-spark ${C.sparkMs}ms var(--ease-out);
+}
+.m-cat .m-spark.s2 { animation-delay: ${C.sparkStep}ms; }
+.m-cat .m-spark.s3 { animation-delay: ${C.sparkStep * 2}ms; }
+.m-cat .m-spark.s4 { animation-delay: ${C.sparkStep * 3}ms; }
+@keyframes m-spark {
+  0%   { transform: scale(0)    rotate(-40deg); opacity: 0; }
+  30%  { transform: scale(1.12) rotate(0deg);   opacity: 1; }
+  58%  { transform: scale(1)    rotate(6deg);   opacity: 1; }
+  100% { transform: scale(.2)   rotate(18deg);  opacity: 0; }
+}
+
+/* the step · he moves toward the figure. He is cropped at the left edge, so
+   moving right gives back cheek he did not have: he reads as coming closer
+   rather than sliding. Held as --leanX/--leanY because the hop has to carry
+   the same step inside its own keyframes. */
+.m-cat.is-brace:not(.is-doze).is-up {
+  transition: transform .22s var(--ease-out);
+  transform: translate(var(--leanX, 0px), var(--leanY, 0px));
+}
+
+/* the hop · one as each digit lands. An animation beats a transform outright,
+   so a hop that only knew about Y would drop him back to centre mid-jump and
+   snap him forward again when it ended. Every frame carries the step. */
+.m-cat.is-hop:not(.is-doze) { animation: m-hop ${C.hopMs}ms var(--ease-spring) !important; }
+@keyframes m-hop {
+  0%   { transform: translate(var(--leanX, 0px), var(--leanY, 0px)) scale(1, 1); }
+  30%  { transform: translate(var(--leanX, 0px), calc(var(--leanY, 0px) - ${C.hopBy}px)) scale(.97, 1.04); }
+  62%  { transform: translate(var(--leanX, 0px), calc(var(--leanY, 0px) + ${(C.hopBy * 0.25).toFixed(2)}px)) scale(1.03, .97); }
+  100% { transform: translate(var(--leanX, 0px), var(--leanY, 0px)) scale(1, 1); }
 }`;
   }
 
@@ -790,6 +952,36 @@ window.Mascot = (function () {
     if (el && !reduced && C.dozeAfter > 0) {
       nap = setTimeout(function () { el.classList.add('is-doze'); }, C.dozeAfter);
     }
+  }
+
+  /* ---- being typed at ----
+
+     Three one-shots and one held pose. Each one-shot is played by taking its
+     class off, forcing a reflow, and putting it back: without the reflow the
+     browser sees no change and the second burst of a run never plays. Each
+     also parks a timer to take the class off again, so the cat always falls
+     back to idle with nobody tracking what he was doing — the same bargain
+     mood() makes. */
+
+  let popSeq, hopSeq, glanceSeq;
+  let wasUp = false, wasDown = false;
+
+  function replay(cls, ms, done) {
+    el.classList.remove(cls);
+    el.getBoundingClientRect();
+    el.classList.add(cls);
+    return setTimeout(function () { el.classList.remove(cls); if (done) done(); }, ms);
+  }
+
+  /* n stars, once. Which ones light is a class on the first n, because CSS
+     cannot compare a count to an index. */
+  function burst(n) {
+    const stars = el.querySelectorAll('.m-spark');
+    el.classList.remove('is-pop');
+    for (let i = 0; i < stars.length; i++) stars[i].classList.toggle('is-lit', i < n);
+    clearTimeout(popSeq);
+    if (!n) return;
+    popSeq = replay('is-pop', C.sparkMs + C.sparkStep * 3 + 60);
   }
 
   const api = {
@@ -922,6 +1114,82 @@ window.Mascot = (function () {
       }
       countdown();
       return began;
+    },
+
+    /* What he does while an amount is being typed.
+
+       The host owns the field, so the host says what is in it — he cannot
+       read it himself any more than he can decide what a tap meant:
+
+         Mascot.type({ digits, amount, sign, added })
+
+       digits  how many have been typed (the stars are counted, not scaled:
+               one star growing is a dimmer, four arriving is a number)
+       amount  what they add up to  (the dial: ears, eyes, sink, lean)
+       sign    '+' or '-'           (which half of him answers)
+       added   true if THIS keystroke put a digit on (the one-shots fire on
+               the landing, not on every repaint)
+
+       Nothing typed is nothing to react to, so an empty field is rest(). */
+    type(o) {
+      if (!el || reduced) return;
+      o = o || {};
+      const digits = o.digits || 0;
+      const amount = Number(o.amount) || 0;
+      const up = o.sign === '+';
+
+      api.wake();                       /* a keystroke says a person is there */
+      if (!digits) { api.rest(); return; }
+
+      el.classList.add('is-brace');
+      /* Log, not linear — see braceAt at the top. */
+      const t = amount <= 0 ? 0
+        : Math.min(1, Math.log(amount + 1) / Math.log(C.braceAt + 1));
+      el.style.setProperty('--tense', t.toFixed(3));
+      el.classList.toggle('is-up', up);
+
+      if (!up) {
+        /* a flip counts as news too, or turning a sum into a spend says
+           nothing at all */
+        const flipped = !wasDown;
+        wasUp = false;
+        wasDown = true;
+        burst(0);
+        el.classList.remove('is-hop');
+        el.style.removeProperty('--leanX');
+        el.style.removeProperty('--leanY');
+        if (o.added || flipped) { clearTimeout(glanceSeq); glanceSeq = replay('is-glance', C.glanceMs + 40); }
+        return;
+      }
+
+      wasDown = false;
+      clearTimeout(glanceSeq);
+      el.classList.remove('is-glance');   /* a glance left running would swing his face mid-hop */
+      el.style.setProperty('--leanX', (t * 8 * C.upGain).toFixed(2) + 'px');
+      el.style.setProperty('--leanY', (t * -2 * C.upGain).toFixed(2) + 'px');
+      const flipped = !wasUp;
+      wasUp = true;
+      if (o.added || flipped) {
+        burst(digits);
+        clearTimeout(hopSeq);
+        hopSeq = replay('is-hop', C.hopMs + 30);
+      }
+    },
+
+    /* ...and out of it: the field has closed, or there is nothing in it. The
+       commit's own mood plays from here, so this has to leave nothing behind
+       for it to fight over. */
+    rest() {
+      if (!el) return;
+      clearTimeout(popSeq); clearTimeout(hopSeq); clearTimeout(glanceSeq);
+      el.classList.remove('is-brace', 'is-up', 'is-pop', 'is-hop', 'is-glance');
+      const stars = el.querySelectorAll('.m-spark');
+      for (let i = 0; i < stars.length; i++) stars[i].classList.remove('is-lit');
+      el.style.removeProperty('--tense');
+      el.style.removeProperty('--leanX');
+      el.style.removeProperty('--leanY');
+      wasUp = false;
+      wasDown = false;
     },
 
     /* Rouse it without playing a mood — for scrolls, keystrokes, anything that
