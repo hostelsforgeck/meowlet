@@ -34,6 +34,10 @@ window.Months = (function () {
     fling: 1.1,
     settleMs: 90,
 
+    /* how long it stays after the scroll stops, when it is only telling you
+       where you are */
+    restMs: 1000,
+
     rollMs: 340,      /* one digit's slide */
     stagger: 22,      /* ...and the gap between them, right to left */
     easeMs: 240,      /* the box growing or shrinking to its new figures */
@@ -53,9 +57,9 @@ window.Months = (function () {
     return `
 .m-band {
   position: sticky; top: 0; z-index: 3;
-  height: calc(34 * var(--u));
-  display: flex; align-items: center; gap: calc(12 * var(--u));
-  padding: 0 calc(13 * var(--u)) 0 calc(11 * var(--u));
+  height: calc(40.25 * var(--u));
+  display: flex; align-items: center; gap: calc(14 * var(--u));
+  padding: 0 calc(14 * var(--u)) 0 calc(12 * var(--u));
   background: var(--surface-alt);
   box-shadow: inset 0 calc(-1 * var(--u)) 0 rgba(11, 11, 11, .07);
   cursor: pointer; user-select: none;
@@ -64,13 +68,13 @@ window.Months = (function () {
 .m-band.is-now { cursor: default; }
 /* the month reads as a label, not a chip: the pill shape belongs to the day */
 .m-band .m-mm {
-  font: 500 calc(16 * var(--u))/1 var(--mono, "IBM Plex Mono", monospace);
+  font: 500 calc(20 * var(--u))/1 var(--mono, "IBM Plex Mono", monospace);
   letter-spacing: .1em; color: var(--ink);
 }
 .m-band .m-got { margin-left: auto; color: var(--in); }
 .m-band .m-spent { color: var(--accent); }
 .m-band .m-got, .m-band .m-spent {
-  font: 500 calc(16 * var(--u))/1 var(--mono, "IBM Plex Mono", monospace);
+  font: 500 calc(20 * var(--u))/1 var(--mono, "IBM Plex Mono", monospace);
 }
 
 /* Drawn, not typed: the caret glyphs in this face sit off their optical
@@ -78,7 +82,7 @@ window.Months = (function () {
    keys — round caps, one weight. */
 .m-band .m-caret {
   flex: 0 0 auto;
-  width: calc(17 * var(--u)); height: calc(17 * var(--u));
+  width: calc(20 * var(--u)); height: calc(20 * var(--u));
   color: var(--ink-off);
   transition: transform .22s var(--ease-out);
 }
@@ -102,22 +106,27 @@ window.Months = (function () {
 }
 .m-pill {
   pointer-events: auto;
-  display: flex; align-items: center; gap: calc(10 * var(--u));
+  display: flex; align-items: center; gap: calc(11 * var(--u));
   box-sizing: border-box; white-space: nowrap; overflow: hidden;
   background: var(--surface);
   border: calc(2 * var(--u)) solid rgba(18, 18, 18, .7);
-  border-radius: calc(17 * var(--u));
-  padding: calc(6 * var(--u)) calc(14 * var(--u));
-  font: 500 calc(15 * var(--u))/1 var(--mono, "IBM Plex Mono", monospace);
+  border-radius: calc(20 * var(--u));
+  padding: calc(8 * var(--u)) calc(16 * var(--u));
+  font: 500 calc(18 * var(--u))/1 var(--mono, "IBM Plex Mono", monospace);
   box-shadow: 0 calc(3 * var(--u)) calc(9 * var(--u)) rgba(0, 0, 0, .16);
   cursor: pointer; -webkit-tap-highlight-color: transparent;
-  transition: opacity .18s var(--ease-out), transform .18s var(--ease-out),
-              width ${C.easeMs}ms var(--ease-out);
+  transition: width ${C.easeMs}ms var(--ease-out);
 }
 .m-pill b { font-weight: 500; letter-spacing: .08em; color: var(--ink-weekday); }
 .m-pill .m-in { color: var(--in); }
 .m-pill .m-out { color: var(--accent); }
-.m-pill.is-hidden { opacity: 0; transform: translateY(calc(-6 * var(--u))); }
+/* Both ways of being absent fade OUT over .2s and come back instantly:
+   the transition lives on the away-state, so it only runs on the way there. */
+.m-pill.is-hidden, .m-pill.is-gone {
+  opacity: 0; pointer-events: none;
+  transform: translateY(calc(-5 * var(--u)));
+  transition: opacity .2s var(--ease-out), transform .2s var(--ease-out);
+}
 
 /* the odometer: one cell per character, each a two-glyph column that slides
    when that character changes */
@@ -140,7 +149,7 @@ window.Months = (function () {
   /* months already given their opening state once — a fold the user undid
      must survive the next render */
   const defaulted = new Set();
-  let fast = false, lastTop = 0, lastAt = 0, settleSeq = null;
+  let fast = false, lastTop = 0, lastAt = 0, settleSeq = null, restSeq = null;
 
   const mmOf = (d) => String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getFullYear() % 100);
   const dayOf = (d) => d.getDate() + ' ' + SHORT[d.getMonth()];
@@ -277,6 +286,17 @@ window.Months = (function () {
     write(label, inTx(o.got || 0), outTx(o.spent || 0));
   }
 
+  /* Awake while you move. It stays on at the live end (today is not a
+     position, it is the answer) and on a picked day (you asked for it). */
+  function keepAwake() {
+    pill.classList.remove('is-gone');
+    clearTimeout(restSeq);
+    restSeq = setTimeout(() => {
+      const atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 8;
+      if (!atEnd && !picked) pill.classList.add('is-gone');
+    }, C.restMs);
+  }
+
   /* ---------- the api ---------- */
 
   const api = {
@@ -308,9 +328,10 @@ window.Months = (function () {
         if (!row || !row.dataset.day) return;
         picked = picked === row.dataset.day ? null : row.dataset.day;
         pickedAt = scroller.scrollTop;
+        keepAwake();
         paint();
       });
-      pill.addEventListener('click', () => { picked = null; paint(); });
+      pill.addEventListener('click', () => { picked = null; keepAwake(); paint(); });
 
       scroller.addEventListener('scroll', () => {
         const now = performance.now();
@@ -320,6 +341,7 @@ window.Months = (function () {
         lastAt = now;
         /* scrolling lets a picked day go: a nudge keeps it, a journey does not */
         if (picked && Math.abs(scroller.scrollTop - pickedAt) > C.letGo) picked = null;
+        keepAwake();
         paint();
         clearTimeout(settleSeq);
         settleSeq = setTimeout(() => { fast = false; paint(); }, C.settleMs);
@@ -354,6 +376,7 @@ window.Months = (function () {
       shut.delete(now);
       fold();
       lastTop = scroller.scrollTop;
+      keepAwake();
       paint();
     },
 
