@@ -90,9 +90,17 @@
 }
 .money .row.is-today .daynum { font-weight: 500; }
 
-/* Money out is the one thing worth colouring; money in stays ink, so a scan
-   down the column reads as "where it went". */
+/* Both directions are coloured now, so a scan down the column reads as in
+   and out rather than as "where it went" and everything else.
+
+   The green is picked to sit BESIDE #f0423b, not to shout over it: same
+   perceived weight, well short of a signal green, and about 4.2:1 on the
+   white card — a shade more contrast than the red already has. On the black
+   plate it needs a lighter one, which is what --in-lift is for. */
+.money { --in: #23966a; --in-lift: #45c48c; }
+
 .money .c-flow.is-out { color: var(--accent); }
+.money .c-flow.is-in  { color: var(--in); }
 
 /* The balance carries no rupee sign: every figure here is rupees and the
    flow already says so once a row. It recedes so the flow reads as the
@@ -117,6 +125,39 @@
   pointer-events: none;
   animation: row-flash 1.5s var(--ease-out) forwards;
 }
+/* Money in flashes green. The LIFT green, not the ink one: this is a wash at
+   half opacity, and #23966a is darker than the red so it would land heavier
+   than an out-flash for the same number. */
+.money .row.is-new.is-up::after { background: var(--in-lift); }
+
+/* ---------- how the direction is shown ----------
+
+   Three modes, set in You. They govern the LEDGER — the record you scan.
+   The compose plate keeps its sign and its colour in every mode, because
+   while you are entering, the direction is a control state you are about to
+   commit rather than a row you are reading. */
+
+/* Sign only: the column goes back to ink, and so does the receipt flash —
+   a green wash under a mode whose whole point is no colour would be the
+   one thing it was turned on to stop. */
+.money.flow-sign .c-flow.is-out,
+.money.flow-sign .c-flow.is-in { color: var(--ink); }
+.money.flow-sign .row.is-new::after,
+.money.flow-sign .row.is-new.is-up::after { background: var(--ink); }
+.money.flow-sign .row.is-draft,
+.money.flow-sign .row.is-draft.is-up { background: #f4f4f4; }
+
+/* Colour only: flowText drops the sign, so nothing is needed here — the
+   column is already just a figure in the colour of its direction. */
+
+/* Minus only: the spend gets everything — its sign and its red — and income
+   gets nothing at all. A bare figure in ink IS the positive. This is the
+   app's oldest rule about the flow column, kept as an option: money out is
+   the one thing worth marking, so a scan down the column reads as "where it
+   went" and the rest is just the ledger going on. */
+.money.flow-minus .c-flow.is-in { color: var(--ink); }
+.money.flow-minus .row.is-new.is-up::after { background: var(--ink); }
+.money.flow-minus .row.is-draft.is-up { background: #f4f4f4; }
 @keyframes row-flash {
   0%   { opacity: .5; }
   16%  { opacity: .2; }
@@ -395,6 +436,31 @@
 .btn-ghost { background: #f0f0f0; color: var(--ink); }
 .btn-danger { background: var(--accent); color: #fff; }
 
+/* A choice with no line of prose under it is one row, not two — so the
+   sample stops spanning and the whole thing centres on itself. */
+.choice.no-note { align-items: center; padding-block: calc(15 * var(--u)); }
+.choice.no-note .choice-sample { grid-row: 1; }
+.choice.no-note .choice-name { font-size: calc(21 * var(--u)); }
+
+/* ---------- the flow picker's previews ----------
+
+   Each sample is drawn the way that option would draw the column, so the
+   preview IS the argument — the same trick the font picker uses. */
+
+.flow-eg { display: flex; flex-direction: column; align-items: flex-end; gap: calc(3 * var(--u)); }
+.flow-eg i { font-style: normal; font-size: calc(17 * var(--u)); font-weight: 500; }
+.flow-eg-both .eg-out,   .flow-eg-colour .eg-out,
+.flow-eg-minus .eg-out { color: var(--accent); }
+.flow-eg-both .eg-in,    .flow-eg-colour .eg-in  { color: var(--in); }
+.flow-eg-minus .eg-in { color: var(--ink); }
+.flow-eg-sign .eg-out,   .flow-eg-sign .eg-in    { color: var(--ink); }
+/* the selected row inverts, so the samples have to lift off the dark */
+.choice.is-on .flow-eg-both .eg-in,
+.choice.is-on .flow-eg-colour .eg-in { color: var(--in-lift); }
+.choice.is-on .flow-eg-minus .eg-in { color: #fff; }
+.choice.is-on .flow-eg-sign .eg-out,
+.choice.is-on .flow-eg-sign .eg-in { color: #fff; }
+
 /* ---------- font picker ---------- */
 
 .choices {
@@ -496,19 +562,19 @@
 /* The keyboard's height and the chip strip's, both in reference px.
    --kb is the only thing between the bar and the floor; --chips sits
    above the bar, so it costs the ledger rather than the bar. */
-.money { --kb: 0px; --pad: 0; --chips: 0; }
+.money { --kb: 0px; --chips: 0; }
 
 /* The bar rides the keyboard. --kb is a real px length read from
    visualViewport, not a reference unit — the OS keyboard is whatever
    height it is, so this is the one measurement we do not scale. */
 .money .toolbar {
-  bottom: calc(var(--kb) + (var(--pad) + var(--bar-bottom)) * var(--u)
+  bottom: calc(var(--kb) + var(--bar-bottom) * var(--u)
                + env(safe-area-inset-bottom, 0px));
   transition: bottom var(--travel, 240ms) var(--ease-out);
 }
 
 .money .scroller {
-  padding-bottom: calc((106 + var(--pad) + var(--chips)) * var(--u) + var(--kb)
+  padding-bottom: calc((106 + var(--chips)) * var(--u) + var(--kb)
                        + env(safe-area-inset-bottom, 0px));
   transition: padding-bottom var(--travel, 240ms) var(--ease-out);
 }
@@ -526,16 +592,27 @@
 }
 .money .plate-wrap .plate { flex: 1 1 auto; }
 
-/* The label the plate shows while it is a field — the same ₹ and ?
-   the sheet's inputs used, so nothing new has to be learned. */
+/* The prefix the amount grows out of. Sign and currency are one mark at the
+   figure's own size — the ledger writes -₹620, so this writes -₹620 too, and
+   the digits simply continue it. Money out is red, as it is in the flow
+   column; money in stays ink, as it does there. */
 .money .pl-field {
   display: flex;
   align-items: center;
   width: 100%;
-  font-size: calc(19 * var(--u));
-  font-weight: 400;
-  color: #7d7d7d;
+  font-size: calc(30 * var(--u));
+  font-weight: 500;
+  /* 1.1 is what .pl-bal uses, so the prefix lands exactly where the balance's
+     digits were standing — the field REPLACES the figure, it does not shift
+     it — and the input below matches it so the typed digits continue the
+     prefix rather than sitting a pixel off it */
+  line-height: 1.1;
+  letter-spacing: 0;
 }
+.money .pl-sign { color: var(--in-lift); }
+.money .pl-sign.is-out { color: var(--accent); }
+/* the unit recedes: every figure here is rupees, so it is the quietest part */
+.money .pl-cur { color: #6e6e6e; }
 
 /* The real input, over the plate. A real input because the OS keyboard
    is the only correct keyboard: it is the one the person has set up,
@@ -548,25 +625,30 @@
   border: 0;
   border-radius: calc(22 * var(--u));
   background: transparent;
-  /* clears the cat's gutter, then the ₹ / ? label */
-  padding: 0 calc(16 * var(--u)) 0 calc(107 * var(--u));
+  /* Clears the cat's gutter, then the prefix — measured in `ch`, which in a
+     monospace is exactly one character of the input's own size. So the first
+     digit lands precisely where the prefix ends, at any --u and any face. */
+  padding: 0 calc(16 * var(--u)) 0 calc(79 * var(--u) + 2ch);
   font: inherit;
   font-size: calc(30 * var(--u));
   font-weight: 500;
-  line-height: 1;
+  line-height: 1.1;
   color: #fff;
   caret-color: var(--accent);
   -webkit-appearance: none;
           appearance: none;
   outline: none;
 }
-.money .pl-input.is-word { font-size: calc(25 * var(--u)); }
+/* a reason or a name has no prefix — a placeholder says which it is */
+.money .pl-input.is-word {
+  font-size: calc(25 * var(--u));
+  padding-left: calc(85 * var(--u));
+}
 .money .pl-input::placeholder { color: #5f5f5f; }
 .money .pl-input::-webkit-outer-spin-button,
 .money .pl-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-/* the sign is set by the key you pressed, and it is not typed over */
-.money .pl-sign { color: var(--accent); padding-left: calc(6 * var(--u)); }
+
 
 /* A travelling object that simply stops has not arrived — it has been
    switched off. The settle gives the arrival a beat, and the roll is
@@ -613,73 +695,6 @@
 .money .key.is-go { background: var(--pill); color: #fff; }
 .money .key.is-cold { background: #e4e4e4; color: var(--ink-disabled); cursor: default; }
 
-/* ---------- the amount pad ----------
-
-   Drawn here rather than asked of the OS, and for once that is the right way
-   round: the amount is four digits, every OS keyboard is a different height,
-   and a laptop has none at all. Its own pad is the only one whose lift is
-   exact on all three. */
-
-.money .kbd {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(300 * var(--u));
-  padding: calc(14 * var(--u)) calc(7 * var(--u))
-           calc(18 * var(--u) + env(safe-area-inset-bottom, 0px));
-  background: #d7dae0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: calc(10 * var(--u));
-  transform: translateY(101%);
-  transition: transform .26s var(--ease-out);
-  z-index: 8;
-}
-.money .kbd.is-up { transform: none; }
-.money .kbd .kr { display: flex; justify-content: center; gap: calc(7 * var(--u)); }
-.money .kbd .kk {
-  all: unset;
-  flex: 1 1 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: calc(72 * var(--u));
-  border-radius: calc(10 * var(--u));
-  background: #fdfdfd;
-  box-shadow: 0 calc(1 * var(--u)) 0 rgba(0, 0, 0, .3);
-  font-size: calc(30 * var(--u));
-  font-weight: 400;
-  color: var(--ink);
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: background-color .1s linear, transform .1s linear;
-}
-.money .kbd .kk:active { background: #c4c8d0; transform: scale(.94); }
-.money .kbd .kk:focus-visible {
-  outline: calc(2 * var(--u)) solid var(--accent);
-  outline-offset: calc(-3 * var(--u));
-}
-.money .kbd .kk.mod {
-  flex: 1.5 1 0;
-  background: #b6bac3;
-  color: #fff;
-  font-size: calc(24 * var(--u));
-  box-shadow: none;
-}
-/* a hole, not a key — it keeps ⌫ and ⌨ at the two ends of the row */
-.money .kbd .kk.hole {
-  flex: 2 1 0;
-  background: transparent;
-  box-shadow: none;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .money .kbd { transition: none; }
-}
-
 /* ---------- the chips ----------
 
    Categories, not past reasons. A fixed vocabulary keeps every chip in
@@ -691,7 +706,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--kb) + (var(--pad) + var(--bar-bottom) + var(--bar-h) + 10) * var(--u)
+  bottom: calc(var(--kb) + (var(--bar-bottom) + var(--bar-h) + 10) * var(--u)
                + env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: center;
@@ -767,6 +782,13 @@
 }
 .money .chip-kbd.is-on { background: var(--pill); color: #fff; }
 
+/* A real mouse means a real keyboard, and a real keyboard is already there —
+   so there is nothing for this key to summon. `hover` plus a fine pointer is
+   the same test mascot.js uses to decide the eyes may follow a cursor. */
+@media (hover: hover) and (pointer: fine) {
+  .money .chip-kbd { display: none; }
+}
+
 /* The chosen chip travels into the field rather than just vanishing. Its
    box is pinned to the source rect in JS: out of the flex row it would
    otherwise shrink against whatever width is left to the screen edge, and
@@ -788,7 +810,9 @@
 
    Beat 2 puts the reason on the plate, so without this the amount you
    just typed would be nowhere on screen. */
+/* the row you are building already shows which way it will go */
 .money .row.is-draft { background: #fff6f5; }
+.money .row.is-draft.is-up { background: #f2fbf6; }
 .money .row.is-draft .cell { opacity: .5; }
 .money .row.is-draft .cell.is-live { opacity: 1; }
 .money .row.is-draft .c-bal { color: #cfcfcf; }

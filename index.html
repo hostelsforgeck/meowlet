@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css?v=7" />
-<link rel="stylesheet" href="money.css?v=11" />
+<link rel="stylesheet" href="money.css?v=20" />
 </head>
 <body class="money">
   <div class="app">
@@ -58,13 +58,6 @@
       </button>
     </nav>
 
-    <!-- The amount pad. Four digits is not a keyboard's worth of job, and the
-         app's own pad is the only one whose height is knowable — so the lift
-         is exact, a letter or a decimal point cannot be typed, and a laptop
-         with no on-screen keyboard behaves exactly like a phone. The letters
-         are still one tap away on it, for g5 and t5. -->
-    <div class="kbd" id="kbd" aria-hidden="true"></div>
-
     <div class="overlay" id="overlay" hidden>
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
         <h2 class="sheet-title" id="sheetTitle"></h2>
@@ -74,7 +67,7 @@
     </div>
   </div>
 
-  <script src="money.js?v=14"></script>
+  <script src="money.js?v=24"></script>
 
   <!-- The mascot. It carries its own shapes and its own stylesheet, so there is
        nothing to import but this, and nothing to undo but these three lines. -->

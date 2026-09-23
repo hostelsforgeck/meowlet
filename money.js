@@ -45,22 +45,45 @@
   const clock = (d) =>
     `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const rupees = (n) => (n < 0 ? '-' : '') + '₹' + group(n);
-  const flowText = (flow) => flow[0] + '₹' + group(Number(flow.slice(1)));
+  /* A true minus sign, not a hyphen: it is the same width as the + it sits
+     under in the column, which a hyphen is not.
+
+     In colour-only mode there is no mark at all — the colour is carrying
+     the direction, and a sign beside it would be the very thing that
+     setting exists to remove. */
+  const flowText = (flow) => {
+    const out = flow[0] === '-';
+    const mark =
+      state.flow === 'colour' ? ''
+      : state.flow === 'minus' ? (out ? '\u2212' : '')
+      : (out ? '\u2212' : '+');
+    return mark + '₹' + group(Number(flow.slice(1)));
+  };
 
   /* ---------- state ---------- */
 
   let state = load();
 
+  const FLOWS = ['both', 'colour', 'sign', 'minus'];
+
   function blank() {
-    return { name: '', current: 0, history: {}, people: {} };
+    return { name: '', current: 0, history: {}, people: {}, flow: 'both' };
   }
 
   function load() {
+    let s;
     try {
       const raw = localStorage.getItem(STORE_KEY);
-      if (raw) return Object.assign(blank(), JSON.parse(raw));
+      if (raw) s = Object.assign(blank(), JSON.parse(raw));
     } catch (_) { /* blocked storage — run in memory */ }
-    return seed();
+    s = s || seed();
+
+    /* A ledger saved before this setting existed carries no flow, and one
+       saved by a future version could carry anything. Both land on 'both'.
+       Validated HERE rather than against FLOWS, because load() is called
+       before that declaration is initialised. */
+    if (['both', 'colour', 'sign', 'minus'].indexOf(s.flow) < 0) s.flow = 'both';
+    return s;
   }
 
   function save() {
@@ -251,13 +274,18 @@
     when.appendChild(inner);
 
     const flowCell = cell('c-flow', flowText(flow));
-    if (flow[0] === '-') flowCell.classList.add('is-out');
+    flowCell.classList.add(flow[0] === '-' ? 'is-out' : 'is-in');
 
     row.append(when, cell('c-reason', reason), flowCell, cell('c-bal', plain(balance)));
     return row;
   }
 
+  function applyFlow() {
+    for (const m of FLOWS) document.body.classList.toggle('flow-' + m, state.flow === m);
+  }
+
   function render() {
+    applyFlow();
     const today = dateKey(new Date());
     card.textContent = '';
     let rows = 0;
@@ -288,8 +316,11 @@
   function flashLast() {
     const row = card.lastElementChild;
     if (!row) return;
-    row.classList.remove('is-new');
+    row.classList.remove('is-new', 'is-up');
     void row.offsetWidth;
+    /* the flash takes the direction from the row it is flashing, so nothing
+       has to be passed in and an undo cannot disagree with it */
+    if (row.querySelector('.c-flow.is-in')) row.classList.add('is-up');
     row.classList.add('is-new');
   }
 
@@ -627,8 +658,6 @@
   const chipKbd = document.getElementById('chipKbd');
   const composeInput = document.getElementById('composeInput');
   const plateWrap = document.getElementById('plateWrap');
-  const kbd = document.getElementById('kbd');
-  const PAD_H = 300;           /* reference px — the pad's own height */
 
   /* Categories, not past reasons: a fixed vocabulary keeps every chip in the
      same slot forever, and a chip that never moves stops having to be read.
@@ -669,71 +698,16 @@
   }
 
   function setChipsH(px) { document.body.style.setProperty('--chips', px); }
-  function setPad(on) {
-    document.body.style.setProperty('--pad', on ? PAD_H : 0);
-    kbd.classList.toggle('is-up', !!on);
-  }
-
-  /* ---------- the amount pad ----------
-
-     Digits only, by construction: a pad cannot type a letter, a decimal point
-     or a fifth digit, so most of parseAmount's error strings become
-     unreachable. ⌨ is still there for g5 and t5. */
-
-  function padKey(label, cls, run) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'kk' + (cls ? ' ' + cls : '');
-    b.textContent = label;
-    if (run) b.addEventListener('click', run);
-    return b;
-  }
-
-  function buildPad() {
-    kbd.textContent = '';
-    for (const row of ['12345', '67890']) {
-      const r = document.createElement('div');
-      r.className = 'kr';
-      for (const ch of row) r.appendChild(padKey(ch, '', () => padDigit(ch)));
-      kbd.appendChild(r);
-    }
-    const last = document.createElement('div');
-    last.className = 'kr';
-    last.append(
-      padKey('⌫', 'mod', padBack),
-      padKey('', 'hole'),
-      padKey('⌨', 'mod', () => useLetters(true)));
-    kbd.appendChild(last);
-  }
-  buildPad();
-
-  function padDigit(ch) {
-    if (C.beat !== 1 || C.busy) return;
-    if (C.raw.replace(/\D/g, '').length >= 4) return;
-    if (!C.raw && ch === '0') return;
-    setRaw(C.raw + ch);
-  }
-
-  function padBack() {
-    if (C.beat !== 1 || C.busy) return;
-    if (!C.raw) { cancelCompose(); return; }
-    setRaw(C.raw.slice(0, -1));
-  }
-
-  function setRaw(v) {
-    C.raw = v;
-    composeInput.value = v;
-    syncSign();
-    paintKeys();
-    draft();
-  }
 
   /* ---------- who gets the caret ----------
 
-     Focus is what summons the OS keyboard, and inputmode="none" is what asks
-     for the caret without it. So the input is focused throughout — a physical
-     keyboard therefore works on a laptop at every beat — and the mode alone
-     decides whether a phone raises anything.
+     The keyboard is the one the person already has: Gboard on a phone, the
+     physical one on a laptop. Nothing here draws keys.
+
+     Focus is what summons it, and `inputmode` is what it comes up as —
+     'numeric' for the amount, 'text' for a reason or a name, 'none' for the
+     beat that is answered by chips and needs the caret but no keyboard. A
+     laptop ignores inputmode entirely and simply types.
 
      Changing inputmode on a focused field is ignored by some browsers, so the
      field is blurred and refocused around it. */
@@ -753,18 +727,13 @@
     try { composeInput.setSelectionRange(n, n); } catch (_) { /* not a text type */ }
   }
 
-  /* beat 1: the pad, or the letters for g5 / t5 */
+  /* The keyboard key swaps the chips for the letters, for a reason no chip
+     covers. It only ever exists on beat 2, alongside them. */
   function useLetters(on) {
-    if (C.beat === 1) {
-      setPad(!on);
-      setMode(on ? 'text' : 'none');
-      return;
-    }
-    if (C.beat === 2) {
-      chipKbd.classList.toggle('is-on', on);
-      setMode(on ? 'text' : 'none');
-      if (on) showChips(false, true); else syncChips(true);
-    }
+    if (C.beat !== 2) return;
+    chipKbd.classList.toggle('is-on', on);
+    setMode(on ? 'text' : 'none');
+    if (on) showChips(false, true); else syncChips(true);
   }
 
   /* ---------- the chips ---------- */
@@ -819,6 +788,9 @@
   /* The strip exists for exactly one condition: beat 2, reason still empty,
      keyboard not up. Pick one or reach for the letters and it has done its
      job — 60px back to the ledger and one fewer control on screen. */
+  /* The strip belongs to the reason and to nothing else: beat 2, still empty,
+     not typing. Beat 1 is an amount — it has no categories, so it gets no
+     strip, and the keyboard key has nothing to float on. */
   function syncChips(fade) {
     const typing = composeInput.getAttribute('inputmode') === 'text';
     if (C.beat === 2 && !C.why && !typing) { buildChips(); showChips(true); }
@@ -869,25 +841,29 @@
 
   /* ---------- the field ---------- */
 
-  function fieldLabel(text, sign) {
+  /* Beat 1 carries a prefix, because the sign is a decision already made and
+     has to stay visible. Beats 2 and 3 carry none: a placeholder says what
+     the field wants, and gets out of the way the moment you answer it. */
+  function fieldLabel(sign) {
     const box = document.createElement('span');
     box.className = 'pl-field';
-    box.textContent = text;
-    if (sign) {
-      const s = document.createElement('span');
-      s.className = 'pl-sign';
-      s.textContent = sign;
-      box.appendChild(s);
-    }
+    if (!sign) return box;
+    const m = document.createElement('span');
+    m.className = 'pl-sign' + (sign === '-' ? ' is-out' : '');
+    m.textContent = sign === '-' ? '\u2212' : '+';
+    const cur = document.createElement('span');
+    cur.className = 'pl-cur';
+    cur.textContent = '\u20b9';
+    box.append(m, cur);
     return box;
   }
 
   /* `focus` only counts as a user gesture inside the handler of one, so every
      call site below is reached synchronously from a click. `mode` is what a
      phone reads: 'none' keeps the caret and raises nothing. */
-  function openField(label, sign, value, word, mode, hint) {
+  function openField(sign, value, word, mode, hint) {
     clearTimeout(plateSeq);          /* no parked rest() may steal the field */
-    plateSwap(fieldLabel(label, sign));
+    plateSwap(fieldLabel(sign));
     composeInput.hidden = false;
     composeInput.classList.toggle('is-word', !!word);
     composeInput.setAttribute('enterkeyhint', C.beat === 3 ? 'done' : 'next');
@@ -917,12 +893,12 @@
     if (C.beat === 0 || C.busy) return;
 
     const parsed = parseAmount(expr());
+    const op = parsed.error ? C.sign : parsed.op;
     const amount = (C.raw && !parsed.error) ? Number(parsed.amount) : null;
-    const delta = amount == null ? null
-      : (parsed.op === '+' ? amount : -amount);
+    const delta = amount == null ? null : (op === '+' ? amount : -amount);
 
     const row = document.createElement('div');
-    row.className = 'row is-draft';
+    row.className = 'row is-draft' + (op === '+' ? ' is-up' : '');
 
     const when = document.createElement('div');
     when.className = 'cell c-when';
@@ -941,8 +917,8 @@
     if (C.beat >= 2) why.classList.add('is-live');
 
     const flowCell = cell('c-flow',
-      (parsed.op === '+' ? '+' : '-') + '₹' + (C.raw ? group(amount == null ? 0 : amount) : ''));
-    if (parsed.op !== '+') flowCell.classList.add('is-out');
+      (op === '+' ? '+' : '\u2212') + '₹' + (C.raw ? group(amount == null ? 0 : amount) : ''));
+    flowCell.classList.add(op === '+' ? 'is-in' : 'is-out');
     if (C.beat === 1) flowCell.classList.add('is-live');
 
     const bal = cell('c-bal', delta == null ? '·' : group(state.current + delta));
@@ -976,23 +952,24 @@
   }
 
   const GLYPHS = {
-    plus:  'M9 1.5V16.5M1.5 9H16.5',
-    minus: 'M1.5 9H16.5',
-    next:  'M1.5 9H16.5M10 2.5L16.5 9L10 15.5',
-    tick:  'M2 9.5L7 14.5L16 3.5',
+    plus:  { vb: '0 0 18 18', d: 'M9 1.5V16.5M1.5 9H16.5' },
+    minus: { vb: '0 0 18 4',  d: 'M1.5 2H16.5' },
+    next:  { vb: '0 0 18 18', d: 'M1.5 9H16.5M10 2.5L16.5 9L10 15.5' },
+    tick:  { vb: '0 0 18 18', d: 'M2 9.5L7 14.5L16 3.5' },
   };
   function keyGlyph(btn, name) {
     btn.textContent = '';
+    const g = GLYPHS[name];
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     /* #btnOut .icon is locked to 4u tall for the minus bar, so anything that
        is not the minus has to say it is square */
     svg.setAttribute('class', 'icon' + (name === 'minus' ? '' : ' is-square'));
-    svg.setAttribute('viewBox', '0 0 18 18');
+    svg.setAttribute('viewBox', g.vb);
     svg.setAttribute('width', '18');
-    svg.setAttribute('height', '18');
+    svg.setAttribute('height', name === 'minus' ? '4' : '18');
     svg.setAttribute('aria-hidden', 'true');
     const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    p.setAttribute('d', GLYPHS[name]);
+    p.setAttribute('d', g.d);
     p.setAttribute('fill', 'none');
     p.setAttribute('stroke', 'currentColor');
     p.setAttribute('stroke-width', '3');
@@ -1012,11 +989,10 @@
     C.why = '';
     C.who = '';
     C.when = new Date();
+    /* the number keyboard, straight away — an amount is what this beat is
+       for, and on a laptop this simply means the field has the caret */
+    openField(sign, '', false, 'numeric', '');
     showChips(false);
-    setPad(true);
-    /* the pad types the digits; the caret is the field's own, and inputmode
-       none is what stops a phone raising a second keyboard over it */
-    openField('₹', sign, '', false, 'none', '');
     paintKeys();
     draft();
     toBottom();
@@ -1031,10 +1007,9 @@
       const parsed = parseAmount(expr());
       if (parsed.error) { plateWarn(parsed.error); return; }
       C.beat = 2;
-      setPad(false);
       /* the chips are the point: beat 2 opens with NOTHING under the bar, so
          it comes home and the ledger stays visible while you pick */
-      openField('?', null, C.why, true, 'none', 'why?');
+      openField(null, C.why, true, 'none', 'why?');
       syncChips();
       paintKeys();
       draft();
@@ -1048,8 +1023,7 @@
       if (parsed.person) {
         C.beat = 3;
         showChips(false);
-        setPad(false);
-        openField('name', null, C.who, true, 'text', 'who?');
+        openField(null, C.who, true, 'text', 'who?');
         paintKeys();
         draft();
         return;
@@ -1068,7 +1042,7 @@
     if (C.busy) return;
     if (C.beat === 3) {
       C.beat = 2;
-      openField('?', null, C.why, true, 'none', 'why?');
+      openField(null, C.why, true, 'none', 'why?');
       syncChips();
       paintKeys();
       draft();
@@ -1079,15 +1053,10 @@
          gives up the beat — one press per thing you opened */
       if (composeInput.getAttribute('inputmode') === 'text') { useLetters(false); return; }
       C.beat = 1;
+      openField(C.sign, C.raw, false, 'numeric', '');
       showChips(false);
-      setPad(true);
-      openField('₹', C.sign, C.raw, false, 'none', '');
       paintKeys();
       draft();
-      return;
-    }
-    if (C.beat === 1 && composeInput.getAttribute('inputmode') === 'text') {
-      useLetters(false);   /* the g/t keyboard goes before the beat does */
       return;
     }
     cancelCompose();
@@ -1101,7 +1070,6 @@
     C.busy = false;
     closeField();
     showChips(false);
-    setPad(false);
     paintKeys();
     render();
     if (message) Plate.say(message); else Plate.rest();
@@ -1149,7 +1117,6 @@
     C.beat = 0;
     closeField();
     showChips(false);
-    setPad(false);
     paintKeys();
     render();
     flashLast();
@@ -1192,9 +1159,19 @@
 
   composeInput.addEventListener('input', () => {
     if (C.beat === 1) {
-      /* the sign is the key you pressed; it is not part of what you type */
-      C.raw = composeInput.value.replace(/^[+-]+/, '');
-      if (C.raw !== composeInput.value) composeInput.value = C.raw;
+      /* The sign is the key you pressed; it is not part of what you type. And
+         the four-digit ceiling is enforced here now: a drawn pad could refuse
+         a fifth digit by simply not having one, a real keyboard cannot. */
+      let v = composeInput.value.replace(/^[+-]+/, '');
+      const head = /^[gt]/i.test(v) ? v[0] : '';
+      const digits = v.slice(head.length).replace(/\D/g, '').slice(0, 4);
+      v = head + digits;
+      if (v !== composeInput.value) {
+        const atEnd = composeInput.selectionStart === composeInput.value.length;
+        composeInput.value = v;
+        if (atEnd) { try { composeInput.setSelectionRange(v.length, v.length); } catch (_) {} }
+      }
+      C.raw = v;
       syncSign();
     } else if (C.beat === 2) {
       /* typing straight after a chip refines it, so the space belongs to the
@@ -1205,6 +1182,10 @@
         composeInput.value = v;
       }
       C.why = v;
+      /* type something and the chips have nothing left to offer. On a phone
+         the ⌨ key did this; on a desktop there is no key, so the keystroke
+         does it — and deleting back to empty brings them back. */
+      syncChips(true);
     } else if (C.beat === 3) {
       C.who = composeInput.value;
     }
@@ -1218,7 +1199,9 @@
     const el = plateEl.querySelector('.pl-layer:not(.out) .pl-sign');
     if (!el) return;
     const parsed = parseAmount(expr());
-    el.textContent = parsed.error ? C.sign : (parsed.op === '+' ? '+' : '-');
+    const op = parsed.error ? C.sign : parsed.op;
+    el.textContent = op === '+' ? '+' : '\u2212';
+    el.classList.toggle('is-out', op !== '+');
   }
 
   composeInput.addEventListener('keydown', (e) => {
@@ -1240,7 +1223,7 @@
   });
 
   chipKbd.addEventListener('click', () => {
-    if (C.beat !== 2 || C.busy) return;
+    if (C.busy || C.beat !== 2) return;
     useLetters(composeInput.getAttribute('inputmode') !== 'text');
   });
 
@@ -1375,6 +1358,73 @@
     ]);
   }
 
+  /* ---------- how the direction is shown ----------
+
+     Three ways to tell money in from money out, and the honest note under
+     each: colour alone is the one that fails a red-blind reader, and it is
+     also the quietest. Both is the default because a sign costs one glyph
+     and survives everything. */
+
+  /* Named for the cat, loudest to quietest. The preview beside each one is
+     the whole explanation, so no line of prose has to sit under it.
+
+     The description does not disappear, though: it moves to the button's
+     aria-label, because a screen reader gets no preview and "Purr" on its
+     own would tell it nothing at all. */
+  const FLOW_OPTS = [
+    { id: 'both',   label: 'Meow',  says: 'Both \u2014 sign and colour' },
+    { id: 'colour', label: 'Purr',  says: 'Colour only \u2014 no signs' },
+    { id: 'sign',   label: 'Chirp', says: 'Sign only \u2014 no colour' },
+    { id: 'minus',  label: 'Doze',  says: 'Minus only \u2014 income unmarked' },
+  ];
+
+  function chooseFlow() {
+    const body = document.createElement('div');
+    body.className = 'choices';
+    body.setAttribute('role', 'radiogroup');
+    body.setAttribute('aria-label', 'Flow column');
+
+    for (const o of FLOW_OPTS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'choice no-note' + (o.id === state.flow ? ' is-on' : '');
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(o.id === state.flow));
+      b.setAttribute('aria-label', o.label + ': ' + o.says);
+      b.title = o.says;
+
+      const name = document.createElement('span');
+      name.className = 'choice-name';
+      name.textContent = o.label;
+
+      /* the preview is the argument: each row is drawn the way it would be */
+      const sample = document.createElement('span');
+      sample.className = 'choice-sample flow-eg flow-eg-' + o.id;
+      const out = document.createElement('i');
+      out.className = 'eg-out';
+      out.textContent = (o.id === 'colour' ? '' : '\u2212') + '\u20b9620';
+      const inn = document.createElement('i');
+      inn.className = 'eg-in';
+      inn.textContent = (o.id === 'colour' || o.id === 'minus' ? '' : '+') + '\u20b9500';
+      sample.append(out, inn);
+
+      b.append(name, sample);
+      b.addEventListener('click', () => {
+        state.flow = o.id;
+        save();
+        render();
+        for (const other of body.children) {
+          const on = other === b;
+          other.classList.toggle('is-on', on);
+          other.setAttribute('aria-checked', String(on));
+        }
+      });
+      body.appendChild(b);
+    }
+
+    openSheet('Flow', body, [['Done', 'primary', closeSheet]]);
+  }
+
   function showHelp() {
     const body = document.createElement('pre');
     body.className = 'pre';
@@ -1433,6 +1483,7 @@ You
       ['Undo last', undoLast],
       ['Export', exportHistory],
       ['Your name', setName],
+      ['Flow', chooseFlow],
       ['Font', chooseFont],
       ['Help', showHelp],
     ]) {
