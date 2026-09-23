@@ -152,19 +152,26 @@ window.Mascot = (function () {
 
     /* ---- being typed at ----
        The reaction while an amount is on the plate. Every number here was
-       argued out in assets/mascot-input.html against the real geometry; the
+       argued out in assets/lab/mascot-input.html against the real geometry; the
        comments on what each one does are with the rules, in css().
 
-       braceAt is the amount the tension tops out at. 5000 is not a limit,
-       it is where the dial runs out: the plate takes four digits, so 9999
-       lands past the top with a little of the scale left unspent, which is
-       what keeps 900 from already looking like the worst day of the year. */
+       braceAt is the amount the tension tops out at — not a limit, the point
+       where the dial runs out. It is deliberately well under the five-digit
+       ceiling: a spend of 5,000 IS the worst face he has, and the ones above
+       it are rent and fees, which arrive resigned rather than shocked. The
+       log scale is what keeps 900 from already looking like that. */
     braceAt: 5000,
     braceEar: 9, braceEye: 0.30, braceSink: 6,      /* the spend, on the dial */
     braceLook: 8, braceLift: 4, glanceMs: 760,      /* ...and the look up at it */
     upEye: 0.55, upGain: 1,                         /* the income */
+    leanBy: 4,                                      /* ...and how far he steps at it */
     sparkMs: 820, sparkStep: 90,                    /* a star per digit */
     hopMs: 440, hopBy: 5,                           /* and a hop under it */
+
+    /* Letting go. Long enough to be a movement rather than a cut, short
+       enough that the field is gone before he has finished — he is
+       answering what you just did, not holding you up. */
+    restMs: 240,
 
     fur:    '#ffffff',
     ink:    '#121212',  /* the cut-out colour: whatever is behind the cat */
@@ -173,7 +180,7 @@ window.Mascot = (function () {
 
   /* ---------- the shapes ----------
 
-     Traced from assets/cat.png, not drawn by eye. The reference turned out to be one
+     Traced from assets/ref/cat.png, not drawn by eye. The reference turned out to be one
      symmetric cat photographed at a 9.97 degree tilt — both its eyes are the
      same capsule, and its apparent lopsidedness is that tilt. So: un-rotate,
      measure, mirror, and put the tilt back as a transform.
@@ -268,7 +275,8 @@ window.Mascot = (function () {
     '<g transform="translate(98,-4) scale(1.4)"><path class="m-spark s1" d="' + STAR + '" /></g>',
     '<g transform="translate(116,-18) scale(1.15)"><path class="m-spark s2" d="' + STAR + '" /></g>',
     '<g transform="translate(79,-25) scale(1)"><path class="m-spark s3" d="' + STAR + '" /></g>',
-    '<g transform="translate(58,-14) scale(.85)"><path class="m-spark s4" d="' + STAR + '" /></g>'
+    '<g transform="translate(58,-14) scale(.85)"><path class="m-spark s4" d="' + STAR + '" /></g>',
+    '<g transform="translate(37,-25) scale(.7)"><path class="m-spark s5" d="' + STAR + '" /></g>'
   ].join('\n');
 
   /* ---------- the stylesheet ----------
@@ -832,6 +840,7 @@ window.Mascot = (function () {
 .m-cat .m-spark.s2 { animation-delay: ${C.sparkStep}ms; }
 .m-cat .m-spark.s3 { animation-delay: ${C.sparkStep * 2}ms; }
 .m-cat .m-spark.s4 { animation-delay: ${C.sparkStep * 3}ms; }
+.m-cat .m-spark.s5 { animation-delay: ${C.sparkStep * 4}ms; }
 @keyframes m-spark {
   0%   { transform: scale(0)    rotate(-40deg); opacity: 0; }
   30%  { transform: scale(1.12) rotate(0deg);   opacity: 1; }
@@ -963,8 +972,23 @@ window.Mascot = (function () {
      back to idle with nobody tracking what he was doing — the same bargain
      mood() makes. */
 
-  let popSeq, hopSeq, glanceSeq;
+  let popSeq, hopSeq, glanceSeq, restSeq;
   let wasUp = false, wasDown = false;
+
+  /* The pose, gone this instant and with nothing left over. Used at the end
+     of the ease home, and by anything that cannot wait for one. */
+  function stripPose() {
+    if (!el) return;
+    clearTimeout(popSeq); clearTimeout(hopSeq); clearTimeout(glanceSeq); clearTimeout(restSeq);
+    el.classList.remove('is-brace', 'is-up', 'is-pop', 'is-hop', 'is-glance');
+    const stars = el.querySelectorAll('.m-spark');
+    for (let i = 0; i < stars.length; i++) stars[i].classList.remove('is-lit');
+    el.style.removeProperty('--tense');
+    el.style.removeProperty('--leanX');
+    el.style.removeProperty('--leanY');
+    wasUp = false;
+    wasDown = false;
+  }
 
   function replay(cls, ms, done) {
     el.classList.remove(cls);
@@ -981,7 +1005,7 @@ window.Mascot = (function () {
     for (let i = 0; i < stars.length; i++) stars[i].classList.toggle('is-lit', i < n);
     clearTimeout(popSeq);
     if (!n) return;
-    popSeq = replay('is-pop', C.sparkMs + C.sparkStep * 3 + 60);
+    popSeq = replay('is-pop', C.sparkMs + C.sparkStep * 4 + 60);
   }
 
   const api = {
@@ -1011,6 +1035,7 @@ window.Mascot = (function () {
     mood(name) {
       if (!el || reduced || !MS[name]) return;
       clearTimeout(seq);
+      stripPose();          /* a pose still on him would hold the mood off the root */
       el.classList.remove('is-doze');
       el.classList.remove.apply(el.classList, MOODS);
       el.getBoundingClientRect();               /* let the removal land, so a repeat replays */
@@ -1134,6 +1159,7 @@ window.Mascot = (function () {
     type(o) {
       if (!el || reduced) return;
       o = o || {};
+      clearTimeout(restSeq);            /* a letting-go in flight is off again */
       const digits = o.digits || 0;
       const amount = Number(o.amount) || 0;
       const up = o.sign === '+';
@@ -1165,8 +1191,8 @@ window.Mascot = (function () {
       wasDown = false;
       clearTimeout(glanceSeq);
       el.classList.remove('is-glance');   /* a glance left running would swing his face mid-hop */
-      el.style.setProperty('--leanX', (t * 8 * C.upGain).toFixed(2) + 'px');
-      el.style.setProperty('--leanY', (t * -2 * C.upGain).toFixed(2) + 'px');
+      el.style.setProperty('--leanX', (t * C.leanBy * C.upGain).toFixed(2) + 'px');
+      el.style.setProperty('--leanY', (t * C.leanBy * -0.25 * C.upGain).toFixed(2) + 'px');
       const flipped = !wasUp;
       wasUp = true;
       if (o.added || flipped) {
@@ -1176,20 +1202,27 @@ window.Mascot = (function () {
       }
     },
 
-    /* ...and out of it: the field has closed, or there is nothing in it. The
-       commit's own mood plays from here, so this has to leave nothing behind
-       for it to fight over. */
-    rest() {
+    /* ...and out of it: the field has closed, or there is nothing left in it.
+
+       He eases home rather than cutting, and the ease IS the pose: the dial
+       goes to 0 and every part follows it back on the transition it already
+       has. Taking the classes off first would take those transitions with
+       them and put the idle animations back in the same frame, which is a
+       jump — the thing this exists to avoid. Pass true when there is no time
+       for that. */
+    rest(now) {
       if (!el) return;
-      clearTimeout(popSeq); clearTimeout(hopSeq); clearTimeout(glanceSeq);
-      el.classList.remove('is-brace', 'is-up', 'is-pop', 'is-hop', 'is-glance');
+      clearTimeout(popSeq); clearTimeout(hopSeq); clearTimeout(glanceSeq); clearTimeout(restSeq);
+      el.classList.remove('is-pop', 'is-hop', 'is-glance');   /* the one-shots stop now */
       const stars = el.querySelectorAll('.m-spark');
       for (let i = 0; i < stars.length; i++) stars[i].classList.remove('is-lit');
-      el.style.removeProperty('--tense');
-      el.style.removeProperty('--leanX');
-      el.style.removeProperty('--leanY');
       wasUp = false;
       wasDown = false;
+      if (now || reduced || !el.classList.contains('is-brace')) { stripPose(); return; }
+      el.style.setProperty('--tense', '0');
+      el.style.setProperty('--leanX', '0px');
+      el.style.setProperty('--leanY', '0px');
+      restSeq = setTimeout(stripPose, C.restMs);
     },
 
     /* Rouse it without playing a mood — for scrolls, keystrokes, anything that

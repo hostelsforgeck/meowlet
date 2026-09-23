@@ -172,11 +172,17 @@
   /* ---------- amount grammar ---------- */
 
   // 5 / +5 / -5 add or subtract; g5 gives (lends), t5 takes (collects).
-  /* One entry tops out at four digits. Every route in — typed, lent, collected —
+  /* One entry tops out at five digits. Every route in — typed, lent, collected —
      goes through here, so this is the only place the ceiling has to exist.
-     It is checked on the VALUE, not the digit count: 00009999 is four digits
-     wearing a hat. */
-  const MAX_ENTRY = 9999;
+     It is checked on the VALUE, not the digit count: 000099999 is five digits
+     wearing a hat.
+
+     Five, not four, because rent and fees are five-figure and splitting them
+     into two rows is a worse lie than one big number. The columns already
+     hold it: the flow track takes nine characters at full size and −₹99,999
+     is eight, and the balance has stepped down past a lakh since it was
+     measured. */
+  const MAX_ENTRY = 99999;
 
   function parseAmount(raw) {
     const x = raw.trim();
@@ -1154,11 +1160,11 @@
   composeInput.addEventListener('input', () => {
     if (C.beat === 1) {
       /* The sign is the key you pressed; it is not part of what you type. And
-         the four-digit ceiling is enforced here now: a drawn pad could refuse
-         a fifth digit by simply not having one, a real keyboard cannot. */
+         the five-digit ceiling is enforced here now: a drawn pad could refuse
+         a sixth digit by simply not having one, a real keyboard cannot. */
       let v = composeInput.value.replace(/^[+-]+/, '');
       const head = /^[gt]/i.test(v) ? v[0] : '';
-      const digits = v.slice(head.length).replace(/\D/g, '').slice(0, 4);
+      const digits = v.slice(head.length).replace(/\D/g, '').slice(0, 5);
       v = head + digits;
       if (v !== composeInput.value) {
         const atEnd = composeInput.selectionStart === composeInput.value.length;
