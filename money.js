@@ -793,7 +793,30 @@
      beats are the same either way — that is the whole point of holding a row:
      you land in the flow you already use forty times a day. */
   const C = { beat: 0, sign: '-', raw: '', why: '', who: '', busy: false,
-              when: null, edit: null, kind: null };
+              when: null, edit: null, kind: null, seq: null };
+
+  /* ---------- the order the beats are asked in ----------
+
+     1 amount · 2 reason · 3 who. Those numbers are the ROLES and they do not
+     move; what moves is the walk between them.
+
+     The sentence has always read who · amount · reason —
+
+         you gave Ravi ₹500 for chai
+
+     — so when the person is known before a key is pressed, which is exactly
+     the case when you held − and picked a move, that is the order it asks
+     in, and the blanks fill left to right instead of the name landing last
+     and sitting first.
+
+     `g5` cannot join in: it only declares a person once the amount parses,
+     and you cannot ask for a name before you know one is wanted. So that
+     path still asks who last, and the who-beat is appended when it appears. */
+  const SEQ_PLAIN  = [1, 2];
+  const SEQ_PERSON = [1, 2, 3];
+  const SEQ_MOVE   = [3, 1, 2];
+  C.seq = SEQ_PLAIN;
+  const stepOf = () => C.seq.indexOf(C.beat);
 
   /* The key you pressed supplies the sign — UNLESS what you typed carries a
      direction of its own. g5 and t5 already mean one (lending is money out,
@@ -866,7 +889,20 @@
     lift();
   }
 
-  function setChipsH(px) { document.body.style.setProperty('--chips', px); }
+  /* ---------- the shelf above the bar ----------
+
+     It used to hold one thing at a time — the strip OR the sentence — so
+     either could simply claim the slot. In who · amount · reason the
+     sentence is up from the first beat and the strip is up for two of the
+     three, so they stack: the strip keeps the slot, the sentence rides
+     above it, and the ledger is told what the pair costs, not each. */
+  let shelfChips = 0, shelfSay = 0;
+  function shelf() {
+    document.body.style.setProperty('--chips', shelfChips + shelfSay);
+    document.body.style.setProperty('--lift', shelfChips ? 54 : 0);
+  }
+  function setChipsH(px) { shelfChips = px; shelf(); }
+  function setSayH(px) { shelfSay = px; shelf(); }
 
   /* ---------- who gets the caret ----------
 
@@ -905,6 +941,40 @@
       b.addEventListener('click', () => startPerson(id));
       chipscroll.appendChild(b);
     }
+    chipscroll.scrollLeft = 0;
+    chipEdges();
+  }
+
+  /* ---------- who, out of the people you already have ----------
+
+     Asking for the name FIRST is what makes this possible: the row the moves
+     were standing in is free, and the answer is nearly always one of three
+     names the app is already holding. Each chip carries that person's net,
+     so the strip answers the question and reports the standing at once. The
+     dashed last chip is the reminder that a name off the list is allowed —
+     the keyboard is already up, so it only has to say so. */
+  function buildPeople() {
+    chipscroll.textContent = '';
+    const names = Object.keys(state.people);
+    chipscroll.classList.toggle('is-moves', names.length === 1);
+    for (const name of names) {
+      const net = Number(state.people[name][0]);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      const owe = document.createElement('span');
+      owe.className = 'chip-net ' + (net < 0 ? 'is-mine' : 'is-theirs');
+      owe.textContent = (net < 0 ? '−' : '+') + '₹' + group(Math.abs(net));
+      b.append(document.createTextNode(name), owe);
+      b.addEventListener('click', () => pickWho(name, b));
+      chipscroll.appendChild(b);
+    }
+    const fresh = document.createElement('button');
+    fresh.type = 'button';
+    fresh.className = 'chip is-fresh';
+    fresh.textContent = '+ new';
+    fresh.addEventListener('click', () => { composeInput.value = ''; focusField(); });
+    chipscroll.appendChild(fresh);
     chipscroll.scrollLeft = 0;
     chipEdges();
   }
@@ -964,11 +1034,9 @@
      is up throughout now, so it is no longer part of the question — the chips
      simply sit above it until one of them, or the keyboard, answers. */
   function syncChips(fade) {
-    /* a person entry has the sentence on that shelf, and one thing above the
-       bar at a time is the whole point of the shelf */
-    if (C.kind) { showChips(false, fade); return; }
-    if (C.beat === 2 && !C.why) { buildChips(); showChips(true); }
-    else showChips(false, fade);
+    if (C.beat === 3 && !C.who.trim()) { buildPeople(); showChips(true); return; }
+    if (C.beat === 2 && !C.why) { buildChips(); showChips(true); return; }
+    showChips(false, fade);
   }
 
   /* The chosen chip flies into the field. The value lands in the input at
@@ -1003,6 +1071,18 @@
     setTimeout(() => fly.remove(), 320);
   }
 
+  /* the same gesture as a category chip, on the beat that now leads */
+  function pickWho(name, btn) {
+    if (C.beat !== 3 || C.busy || C.who.trim()) return;
+    C.who = name;
+    composeInput.value = name;
+    flyChip(btn);
+    syncChips(true);
+    paintKeys();
+    paintSay();
+    draft();
+  }
+
   function pickChip(label, btn) {
     if (C.beat !== 2 || C.busy || C.why) return;
     C.why = label;
@@ -1028,7 +1108,7 @@
     clearTimeout(sayHold);
     if (!C.kind || !C.beat) {
       sayingEl.classList.add('is-out');
-      if (!C.kind) setChipsH(0);
+      setSayH(0);
       return;
     }
     const m = MOVES[C.kind];
@@ -1050,7 +1130,7 @@
     }
     sayingEl.hidden = false;
     sayingEl.classList.remove('is-out');
-    setChipsH(SAY_H);
+    setSayH(SAY_H);
   }
 
   /* A promise writes no row, so the sentence is the only receipt there can
@@ -1060,7 +1140,7 @@
     clearTimeout(sayHold);
     sayHold = setTimeout(() => {
       sayingEl.classList.add('is-out');
-      setChipsH(0);
+      setSayH(0);
     }, reduced ? 200 : 2000);
   }
 
@@ -1074,17 +1154,13 @@
     if (C.busy || C.beat !== 0) return;
     const m = MOVES[kind];
     C.kind = kind;
-    C.beat = 1;
     C.sign = m.owes < 0 ? '-' : '+';
+    C.seq = SEQ_MOVE;               /* who, and the strip is already there */
     C.raw = '';
     C.why = '';
     C.who = '';
     C.when = new Date();
-    openField(C.sign, '', false, 'numeric', '');
-    showChips(false);
-    paintKeys();
-    paintSay();
-    draft();
+    enter(SEQ_MOVE[0]);
     toBottom();
     if (window.Mascot) window.Mascot.wake();
   }
@@ -1124,7 +1200,8 @@
     plateSwap(fieldLabel(sign));
     composeInput.hidden = false;
     composeInput.classList.toggle('is-word', !!word);
-    setAttr(composeInput, 'enterkeyhint', C.beat === 3 ? 'done' : 'next');
+    setAttr(composeInput, 'enterkeyhint',
+            stepOf() === C.seq.length - 1 ? 'done' : 'next');
     composeInput.placeholder = hint || '';
     composeInput.value = value || '';
     setAttr(composeInput, 'inputmode', mode);
@@ -1192,6 +1269,7 @@
     clearUndo();
     C.edit = { key, reason, flow: t[1] };
     C.beat = 1;
+    C.seq = SEQ_PLAIN;
     C.sign = t[1][0] === '-' ? '-' : '+';
     C.raw = String(Math.abs(Number(t[1])));
     C.why = reason;
@@ -1362,7 +1440,7 @@
     when.appendChild(inner);
 
     const why = cell('c-reason', C.why || '');
-    if (C.beat >= 2) why.classList.add('is-live');
+    if (C.beat === 2 || (C.beat === 3 && C.why)) why.classList.add('is-live');
 
     const flowCell = cell('c-flow',
       (op === '+' ? '+' : '\u2212') + '₹' + (C.raw ? group(amount == null ? 0 : amount) : ''));
@@ -1404,9 +1482,11 @@
       btnIn.className = 'key k-in is-gone';
     }
     const armed = C.beat === 1 ? !!C.raw : (C.beat === 2 ? !!C.why.trim() : !!C.who.trim());
+    /* the tick belongs to the LAST beat, wherever the walk put it */
+    const last = stepOf() === C.seq.length - 1 && !C.edit;
     btnOut.className = 'key k-out ' + (armed ? 'is-go' : 'is-cold');
-    btnOut.setAttribute('aria-label', C.beat === 1 ? 'Next' : 'Save');
-    keyGlyph(btnOut, C.beat === 1 ? 'next' : 'tick');
+    btnOut.setAttribute('aria-label', last ? 'Save' : 'Next');
+    keyGlyph(btnOut, last ? 'tick' : 'next');
   }
 
   const GLYPHS = {
@@ -1452,6 +1532,7 @@
   function startCompose(sign) {
     if (C.busy || C.beat !== 0) return;
     C.beat = 1;
+    C.seq = SEQ_PLAIN;
     C.sign = sign;
     C.raw = '';
     C.why = '';
@@ -1467,6 +1548,20 @@
     if (window.Mascot) window.Mascot.wake();
   }
 
+  /* Every beat is entered through here, forwards or backwards, so the walk
+     is the only thing that knows about order and the beats themselves stay
+     three plain jobs: a figure, a word, a name. */
+  function enter(role) {
+    C.beat = role;
+    if (role === 1) openField(C.sign, C.raw, false, 'numeric', '');
+    else openField(null, role === 2 ? C.why : C.who, true, 'text',
+                   role === 2 ? 'why?' : 'who?');
+    syncChips();
+    paintKeys();
+    paintSay();
+    draft();
+  }
+
   function nextBeat() {
     if (C.busy) return;
 
@@ -1474,69 +1569,35 @@
       if (!C.raw) return;
       const parsed = parseAmount(expr());
       if (parsed.error) { plateWarn(parsed.error); return; }
-      C.beat = 2;
-      /* the chips are the point: beat 2 opens with NOTHING under the bar, so
-         it comes home and the ledger stays visible while you pick */
-      openField(null, C.why, true, 'text', 'why?');
-      syncChips();
-      paintKeys();
-      paintSay();
-      draft();
-      /* an edit is already on screen where it lives; dragging the ledger to
-         the bottom would take the row you are working on off it */
-      if (!C.edit) toBottom();
-      return;
+      /* g5 and t5 only now admit to being a person, so the beat is appended
+         rather than planned — and never twice, and never to a move that has
+         already asked */
+      if (parsed.person && C.seq === SEQ_PLAIN) C.seq = SEQ_PERSON;
     }
+    if (C.beat === 2 && !C.why.trim()) return;
+    if (C.beat === 3 && !C.who.trim()) return;
+    /* an edit is finished by its reason: the row it rewrites has no name */
+    if (C.beat === 2 && C.edit) { saveEdit(); return; }
 
-    if (C.beat === 2) {
-      if (!C.why.trim()) return;
-      if (C.edit) { saveEdit(); return; }
-      const parsed = parseAmount(expr());
-      if (parsed.person || C.kind) {
-        C.beat = 3;
-        showChips(false);
-        openField(null, C.who, true, 'text', 'who?');
-        paintKeys();
-        paintSay();
-        draft();
-        return;
-      }
-      commit();
-      return;
-    }
-
-    if (C.beat === 3) {
-      if (!C.who.trim()) return;
-      commit();
-    }
+    const i = stepOf() + 1;
+    if (i >= C.seq.length) { commit(); return; }
+    enter(C.seq[i]);
+    /* an edit is already on screen where it lives; dragging the ledger to
+       the bottom would take the row you are working on off it */
+    if (!C.edit) toBottom();
   }
 
   function backBeat() {
     if (C.busy) return;
-    if (C.beat === 3) {
-      C.beat = 2;
-      openField(null, C.why, true, 'text', 'why?');
-      syncChips();
-      paintKeys();
-      paintSay();
-      draft();
-      return;
-    }
-    if (C.beat === 2) {
-      C.beat = 1;
-      openField(C.sign, C.raw, false, 'numeric', '');
-      showChips(false);
-      paintKeys();
-      paintSay();
-      draft();
-      return;
-    }
-    cancelCompose();
+    const i = stepOf();
+    if (i <= 0) { cancelCompose(); return; }
+    enter(C.seq[i - 1]);
   }
 
   function cancelCompose(message) {
     const wasEdit = !!C.edit;
     C.beat = 0;
+    C.seq = SEQ_PLAIN;
     C.edit = null;
     C.kind = null;
     paintSay();
@@ -1699,6 +1760,7 @@
       syncChips(true);
     } else if (C.beat === 3) {
       C.who = composeInput.value;
+      syncChips(true);
     }
     paintKeys();
     paintSay();
