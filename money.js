@@ -893,6 +893,7 @@
      it at the same time: pick a move and the categories step aside. */
   function buildMoves(sign) {
     chipscroll.textContent = '';
+    chipscroll.classList.add('is-moves');
     for (const id of MOVES_BY_KEY[sign]) {
       const m = MOVES[id];
       const b = document.createElement('button');
@@ -910,6 +911,7 @@
 
   function buildChips() {
     chipscroll.textContent = '';
+    chipscroll.classList.remove('is-moves');
     for (const label of (C.sign === '-' ? CHIPS_OUT : CHIPS_IN)) {
       const b = document.createElement('button');
       b.type = 'button';

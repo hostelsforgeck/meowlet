@@ -761,10 +761,16 @@
   position: absolute;
   inset: 0;
   width: 0;
+  /* the key's own corners, or the ink grows square nibs past them */
+  border-radius: inherit;
   background: rgba(18, 18, 18, .10);
   pointer-events: none;
   animation: key-arm 420ms linear forwards;
 }
+/* ...and on the dark key that ink IS the key. Minus is #171717, so the wash
+   crossing it has to be the other way round: white, at the weight that reads
+   as the same gesture the white + key shows. */
+.money .key.k-out.is-arming::before { background: rgba(255, 255, 255, .26); }
 @keyframes key-arm { to { width: 100%; } }
 
 /* ---------- a person move ----------
@@ -780,6 +786,17 @@
 .money .chip.is-mine   { border-color: var(--accent); color: var(--accent); }
 .money .chip.is-theirs { border-color: var(--in);     color: var(--in); }
 .money .chip.is-promise { border-style: dashed; }
+
+/* Two of them and never more, so they are not a strip you scroll — they are
+   the whole offer. Half the row each, centred, nothing past either edge: the
+   second move stops sitting in the middle of the screen looking like the
+   first one of a list that ran out. */
+.money .chipscroll.is-moves { overflow-x: hidden; }
+.money .chipscroll.is-moves .chip {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+}
 
 /* ---------- the sentence ----------
 
@@ -800,7 +817,10 @@
   text-align: center;
   font-size: calc(17 * var(--u));
   font-weight: 400;
-  color: #8a8a8a;
+  /* It is the only receipt a promise ever gets, so it has to be READ, not
+     sensed. #8a8a8a at 17u on #f3f3f3 was a whisper; this is the same grey
+     family, dark enough to land. */
+  color: #5a5a5a;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -811,7 +831,7 @@
 .money .saying .sy-amt { font-weight: 500; }
 .money .saying .sy-amt.is-mine { color: var(--accent); }
 .money .saying .sy-amt.is-theirs { color: var(--in); }
-.money .saying .sy-soft { color: #bdbdbd; }
+.money .saying .sy-soft { color: var(--ink-empty); }
 
 /* ...and the survivor stops being 35 parts of the bar, so the field gets the
    room instead of a commit key three fingers wide */
