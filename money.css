@@ -811,16 +811,25 @@
   right: 0;
   bottom: calc((var(--bar-bottom) + var(--bar-h) + 12) * var(--u)
                + env(safe-area-inset-bottom, 0px));
-  margin: 0;
-  padding-inline: calc(16 * var(--u));
+  /* It is the only receipt a promise ever gets, so it has to be READ. Grey
+     words on the grey page were a whisper — so it gets the month pill's own
+     shape instead of a darker ink: white card, the same drawn #121212 edge
+     at 70%, sized to its own words and centred. The colours do not move. */
+  width: fit-content;
+  max-width: calc(100% - 24 * var(--u));
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: calc(7 * var(--u)) calc(16 * var(--u));
+  background: var(--surface);
+  border: calc(2 * var(--u)) solid rgba(18, 18, 18, .7);
+  border-radius: calc(20 * var(--u));
+  box-shadow: 0 calc(3 * var(--u)) calc(9 * var(--u)) rgba(0, 0, 0, .16);
   z-index: 5;
   text-align: center;
   font-size: calc(17 * var(--u));
+  line-height: calc(22 * var(--u));
   font-weight: 400;
-  /* It is the only receipt a promise ever gets, so it has to be READ, not
-     sensed. #8a8a8a at 17u on #f3f3f3 was a whisper; this is the same grey
-     family, dark enough to land. */
-  color: #5a5a5a;
+  color: #8a8a8a;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -831,7 +840,7 @@
 .money .saying .sy-amt { font-weight: 500; }
 .money .saying .sy-amt.is-mine { color: var(--accent); }
 .money .saying .sy-amt.is-theirs { color: var(--in); }
-.money .saying .sy-soft { color: var(--ink-empty); }
+.money .saying .sy-soft { color: #bdbdbd; }
 
 /* ...and the survivor stops being 35 parts of the bar, so the field gets the
    room instead of a commit key three fingers wide */
@@ -909,9 +918,11 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  /* the month pill's shape: 20u radius, 16u flanks, the same drawn edge.
+     Height stays 48u — the pill is a readout, a chip is a thumb target. */
   height: calc(48 * var(--u));
-  padding-inline: calc(14 * var(--u));
-  border-radius: calc(15 * var(--u));
+  padding-inline: calc(16 * var(--u));
+  border-radius: calc(20 * var(--u));
   /* A drawn edge, in the plate's own #121212 at 70%. White on #f3f3f3 is
      four levels of grey apart: a shape you have to look for. Full ink at
      2u reads as a stamp and outranks the two keys below, which are the
@@ -925,14 +936,13 @@
   background: var(--surface);
   color: var(--ink);
   font-size: calc(18 * var(--u));
-  font-weight: 400;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   touch-action: manipulation;
-  /* the same lift the + and − keys carry: a chip is the same kind of
-     object, so it sits off the page the same way */
-  box-shadow: 0 calc(1 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, .07),
-              0 calc(3 * var(--u)) calc(8 * var(--u)) rgba(0, 0, 0, .10);
+  /* the month pill's lift, one shadow not two: every outlined white object
+     in the app now sits off the page by the same amount */
+  box-shadow: 0 calc(3 * var(--u)) calc(9 * var(--u)) rgba(0, 0, 0, .16);
   transition: background-color .16s var(--ease-out), color .16s var(--ease-out),
               border-color .16s var(--ease-out), transform .16s var(--ease-out);
 }

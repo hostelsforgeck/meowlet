@@ -1021,7 +1021,7 @@
      and nothing shifts along — only the three blanks ever change. */
 
   const sayingEl = document.getElementById('saying');
-  const SAY_H = 34;                  /* what it costs the ledger, in ref px */
+  const SAY_H = 50;                  /* what it costs the ledger, in ref px */
   let sayHold;
 
   function paintSay() {
