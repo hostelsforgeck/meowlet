@@ -750,6 +750,69 @@
   opacity: 0;
   pointer-events: none;
 }
+/* ---------- hold a key for the person moves ----------
+
+   The same gesture the ledger uses, on the object that already means the
+   direction. Press − and the ink crosses the key; when it lands, the two
+   moves that lean that way are standing above the bar. */
+.money .key { position: relative; }
+.money .key.is-arming::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: rgba(18, 18, 18, .10);
+  pointer-events: none;
+  animation: key-arm 420ms linear forwards;
+}
+@keyframes key-arm { to { width: 100%; } }
+
+/* ---------- a person move ----------
+
+   Four of them, carried by two colours and one texture rather than four
+   icons. The ARROW is whose money ends up where: up is yours out there, down
+   is theirs with you. The LINE is whether any cash actually moved — solid
+   moved, dashed is a promise, and a promise never touches the balance.
+
+   Same colours the ledger already uses. Nothing new enters the theme. */
+.money .chip.is-move { gap: calc(7 * var(--u)); }
+.money .chip.is-move .icon { width: calc(15 * var(--u)); height: calc(15 * var(--u)); }
+.money .chip.is-mine   { border-color: var(--accent); color: var(--accent); }
+.money .chip.is-theirs { border-color: var(--in);     color: var(--in); }
+.money .chip.is-promise { border-style: dashed; }
+
+/* ---------- the sentence ----------
+
+   A chip is a label and the field is a figure; neither can be WRONG in a way
+   you would notice. A sentence can. It arrives whole — the same words in the
+   same places from the first frame to the last — and the slots you have not
+   answered yet stand in as `someone` and `something`, greyed. Nothing
+   appears, nothing shifts along; only the three blanks ever change. */
+.money .saying {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc((var(--bar-bottom) + var(--bar-h) + 12) * var(--u)
+               + env(safe-area-inset-bottom, 0px));
+  margin: 0;
+  padding-inline: calc(16 * var(--u));
+  z-index: 5;
+  text-align: center;
+  font-size: calc(17 * var(--u));
+  font-weight: 400;
+  color: #8a8a8a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: bottom var(--travel, 240ms) var(--ease-out), opacity .2s var(--ease-out);
+}
+.money .saying.is-out { opacity: 0; }
+.money .saying b { font-weight: 500; color: var(--ink); }
+.money .saying .sy-amt { font-weight: 500; }
+.money .saying .sy-amt.is-mine { color: var(--accent); }
+.money .saying .sy-amt.is-theirs { color: var(--in); }
+.money .saying .sy-soft { color: #bdbdbd; }
+
 /* ...and the survivor stops being 35 parts of the bar, so the field gets the
    room instead of a commit key three fingers wide */
 .money .key.is-go, .money .key.is-cold,

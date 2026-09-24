@@ -751,6 +751,37 @@
      same slot forever, and a chip that never moves stops having to be read.
      `Entertainment` is thirteen characters — about 153 reference px — and
      blows the row on its own, so it ships as `Fun`. */
+  /* ---------- the four person moves ----------
+
+     Not four features — two questions, and the bar already asks the first
+     one. `owes` is whose money ends up where (−1 they owe you, +1 you owe
+     them) and decides which key holds it; `cash` is whether any actually
+     moved, and decides whether the ledger ever hears about it.
+
+              hold − (they owe you)      hold + (you owe them)
+     moved    I gave         −₹row        They gave me   +₹row
+     did not  They keep mine  no row      They paid      no row
+
+     A promise is settled by its opposite, so there is no fifth move: claim
+     ₹5,000 then take ₹5,000 and the person nets to zero and leaves People. */
+  const MOVES = {
+    give:  { label: 'I gave',         arrow: 'up',   owes: -1, cash: -1 },
+    claim: { label: 'They keep mine', arrow: 'up',   owes: -1, cash:  0 },
+    take:  { label: 'They gave me',   arrow: 'down', owes:  1, cash:  1 },
+    owe:   { label: 'They paid',      arrow: 'down', owes:  1, cash:  0 },
+  };
+  const MOVES_BY_KEY = { '-': ['give', 'claim'], '+': ['take', 'owe'] };
+
+  /* One sentence each, all four built the same way: the person who DID it
+     first, the figure in the middle, `for <reason>` at the end. `a` `w` `r`
+     arrive as finished fragments, so the template decides only the words. */
+  const SAY = {
+    give:  (a, w, r) => ['you gave ', w, ' ', a, ' for ', r],
+    claim: (a, w, r) => [w, ' keeps your ', a, ' for ', r],
+    take:  (a, w, r) => [w, ' gave you ', a, ' for ', r],
+    owe:   (a, w, r) => [w, ' paid ', a, ' for your ', r],
+  };
+
   const CHIPS_OUT = ['Food', 'Travel', 'Groceries', 'Bills', 'Shopping',
                      'Health', 'Fun', 'Rent', 'Gifts', 'Other'];
   const CHIPS_IN  = ['Salary', 'Refund', 'Gift', 'Sold', 'Other'];
@@ -762,7 +793,7 @@
      beats are the same either way — that is the whole point of holding a row:
      you land in the flow you already use forty times a day. */
   const C = { beat: 0, sign: '-', raw: '', why: '', who: '', busy: false,
-              when: null, edit: null };
+              when: null, edit: null, kind: null };
 
   /* The key you pressed supplies the sign — UNLESS what you typed carries a
      direction of its own. g5 and t5 already mean one (lending is money out,
@@ -857,6 +888,26 @@
 
   /* ---------- the chips ---------- */
 
+  /* The two moves that lean the way of the key you held. They land in the
+     chip row because that is the shelf above the bar, and the two never want
+     it at the same time: pick a move and the categories step aside. */
+  function buildMoves(sign) {
+    chipscroll.textContent = '';
+    for (const id of MOVES_BY_KEY[sign]) {
+      const m = MOVES[id];
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip is-move ' + (m.owes < 0 ? 'is-mine' : 'is-theirs') +
+                    (m.cash === 0 ? ' is-promise' : '');
+      b.dataset.move = id;
+      b.append(icon(m.arrow), document.createTextNode(m.label));
+      b.addEventListener('click', () => startPerson(id));
+      chipscroll.appendChild(b);
+    }
+    chipscroll.scrollLeft = 0;
+    chipEdges();
+  }
+
   function buildChips() {
     chipscroll.textContent = '';
     for (const label of (C.sign === '-' ? CHIPS_OUT : CHIPS_IN)) {
@@ -911,6 +962,9 @@
      is up throughout now, so it is no longer part of the question — the chips
      simply sit above it until one of them, or the keyboard, answers. */
   function syncChips(fade) {
+    /* a person entry has the sentence on that shelf, and one thing above the
+       bar at a time is the whole point of the shelf */
+    if (C.kind) { showChips(false, fade); return; }
     if (C.beat === 2 && !C.why) { buildChips(); showChips(true); }
     else showChips(false, fade);
   }
@@ -955,6 +1009,82 @@
     syncChips(true);
     paintKeys();
     draft();
+  }
+
+  /* ---------- the sentence ----------
+
+     It reads back what you are about to write, and it arrives WHOLE: the
+     same words in the same places at every beat, with the slots you have not
+     answered standing in as `someone` / `something`, greyed. Nothing appears
+     and nothing shifts along — only the three blanks ever change. */
+
+  const sayingEl = document.getElementById('saying');
+  const SAY_H = 34;                  /* what it costs the ledger, in ref px */
+  let sayHold;
+
+  function paintSay() {
+    clearTimeout(sayHold);
+    if (!C.kind || !C.beat) {
+      sayingEl.classList.add('is-out');
+      if (!C.kind) setChipsH(0);
+      return;
+    }
+    const m = MOVES[C.kind];
+    const frag = (text, cls) => {
+      const el = document.createElement(cls === 'b' ? 'b' : 'span');
+      if (cls && cls !== 'b') el.className = cls;
+      el.textContent = text;
+      return el;
+    };
+    const amount = C.raw
+      ? frag('\u20b9' + group(Number(C.raw)), 'sy-amt ' + (m.owes < 0 ? 'is-mine' : 'is-theirs'))
+      : frag('\u20b9\u2014', 'sy-soft');
+    const who = C.who.trim() ? frag(C.who.trim(), 'b') : frag('someone', 'sy-soft');
+    const why = C.why.trim() ? frag(C.why.trim(), 'b') : frag('something', 'sy-soft');
+
+    sayingEl.textContent = '';
+    for (const piece of SAY[C.kind](amount, who, why)) {
+      sayingEl.appendChild(typeof piece === 'string' ? document.createTextNode(piece) : piece);
+    }
+    sayingEl.hidden = false;
+    sayingEl.classList.remove('is-out');
+    setChipsH(SAY_H);
+  }
+
+  /* A promise writes no row, so the sentence is the only receipt there can
+     be. It stays where it already was for two seconds rather than a new
+     surface arriving to say the same thing. */
+  function keepSay() {
+    clearTimeout(sayHold);
+    sayHold = setTimeout(() => {
+      sayingEl.classList.add('is-out');
+      setChipsH(0);
+    }, reduced ? 200 : 2000);
+  }
+
+  /* ---------- with a person ----------
+
+     Hold the key you would have tapped. It already means the direction, so
+     the two moves that lean that way are the only two offered, and the beats
+     after that are the ones you already know: amount, why, who. */
+
+  function startPerson(kind) {
+    if (C.busy || C.beat !== 0) return;
+    const m = MOVES[kind];
+    C.kind = kind;
+    C.beat = 1;
+    C.sign = m.owes < 0 ? '-' : '+';
+    C.raw = '';
+    C.why = '';
+    C.who = '';
+    C.when = new Date();
+    openField(C.sign, '', false, 'numeric', '');
+    showChips(false);
+    paintKeys();
+    paintSay();
+    draft();
+    toBottom();
+    if (window.Mascot) window.Mascot.wake();
   }
 
   /* ---------- the field ---------- */
@@ -1197,6 +1327,13 @@
   function draft() {
     /* an edit already HAS a row, and it is the one you are looking at */
     if (C.edit) { paintEdit(); return; }
+    /* ...and a promise never becomes a row, so it must not rehearse one:
+       nothing moved, and the ledger is only ever what moved */
+    if (C.kind && MOVES[C.kind].cash === 0) {
+      if (draftRow && draftRow.parentNode) draftRow.remove();
+      draftRow = null;
+      return;
+    }
     if (draftRow && draftRow.parentNode) draftRow.remove();
     draftRow = null;
     if (C.beat === 0 || C.busy) return;
@@ -1275,17 +1412,24 @@
     minus: { vb: '0 0 18 4',  d: 'M1.5 2H16.5' },
     next:  { vb: '0 0 18 18', d: 'M1.5 9H16.5M10 2.5L16.5 9L10 15.5' },
     tick:  { vb: '0 0 18 18', d: 'M2 9.5L7 14.5L16 3.5' },
+    /* whose money ends up where: up is yours out there, down is theirs here */
+    up:    { vb: '0 0 18 18', w: 2, d: 'M9 15.5V3M3.5 8.5L9 3l5.5 5.5' },
+    down:  { vb: '0 0 18 18', w: 2, d: 'M9 2.5V15M3.5 9.5L9 15l5.5-5.5' },
     /* the bin is drawn, not struck — at stroke 3 it is a black box */
     bin:   { vb: '0 0 18 18', w: 1.6,
              d: 'M3 4.5h12M7 4.5V2.5h4v2M4.5 4.5l.8 11h7.4l.8-11M7.5 7.5v5M10.5 7.5v5' },
   };
   function keyGlyph(btn, name) {
     btn.textContent = '';
-    const g = GLYPHS[name];
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     /* #btnOut .icon is locked to 4u tall for the minus bar, so anything that
        is not the minus has to say it is square */
-    svg.setAttribute('class', 'icon' + (name === 'minus' ? '' : ' is-square'));
+    btn.appendChild(icon(name, 'icon' + (name === 'minus' ? '' : ' is-square')));
+  }
+
+  function icon(name, cls) {
+    const g = GLYPHS[name];
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', cls || 'icon');
     svg.setAttribute('viewBox', g.vb);
     svg.setAttribute('width', '18');
     svg.setAttribute('height', name === 'minus' ? '4' : '18');
@@ -1298,7 +1442,7 @@
     p.setAttribute('stroke-linecap', 'round');
     p.setAttribute('stroke-linejoin', 'round');
     svg.appendChild(p);
-    btn.appendChild(svg);
+    return svg;
   }
 
   /* ---------- the beats ---------- */
@@ -1334,6 +1478,7 @@
       openField(null, C.why, true, 'text', 'why?');
       syncChips();
       paintKeys();
+      paintSay();
       draft();
       /* an edit is already on screen where it lives; dragging the ledger to
          the bottom would take the row you are working on off it */
@@ -1345,11 +1490,12 @@
       if (!C.why.trim()) return;
       if (C.edit) { saveEdit(); return; }
       const parsed = parseAmount(expr());
-      if (parsed.person) {
+      if (parsed.person || C.kind) {
         C.beat = 3;
         showChips(false);
         openField(null, C.who, true, 'text', 'who?');
         paintKeys();
+        paintSay();
         draft();
         return;
       }
@@ -1370,6 +1516,7 @@
       openField(null, C.why, true, 'text', 'why?');
       syncChips();
       paintKeys();
+      paintSay();
       draft();
       return;
     }
@@ -1378,6 +1525,7 @@
       openField(C.sign, C.raw, false, 'numeric', '');
       showChips(false);
       paintKeys();
+      paintSay();
       draft();
       return;
     }
@@ -1388,6 +1536,8 @@
     const wasEdit = !!C.edit;
     C.beat = 0;
     C.edit = null;
+    C.kind = null;
+    paintSay();
     C.raw = '';
     C.why = '';
     C.who = '';
@@ -1436,12 +1586,36 @@
     C.busy = true;
     const before = state.current;
     const parsed = parseAmount(expr());
+    const move = C.kind ? MOVES[C.kind] : null;
+
+    /* ---------- a promise ----------
+
+       Nothing moved, so the ledger hears nothing: no row, no balance, no
+       roll. Only People changes, and the sentence already on screen is the
+       receipt — it stays for two seconds rather than a new surface arriving
+       to repeat it. */
+    if (move && move.cash === 0) {
+      updatePerson(state, C.who.trim(), move.owes < 0 ? '-' : '+',
+        parsed.amount, C.why.trim(), dateKey(C.when));
+      save();
+      C.beat = 0;
+      C.kind = null;
+      C.busy = false;
+      closeField();
+      showChips(false);
+      paintKeys();
+      render();
+      keepSay();
+      return;
+    }
 
     record(state, C.when, parsed.op, parsed.amount, C.why.trim(),
-      parsed.person ? C.who.trim() : null);
+      (parsed.person || move) ? C.who.trim() : null);
     save();
 
     C.beat = 0;
+    C.kind = null;
+    paintSay();
     closeField();
     showChips(false);
     paintKeys();
@@ -1497,7 +1671,7 @@
       /* g and t open a person's ledger, and an edit cannot reopen one — the
          history row does not record whose it was. So an edit takes digits,
          and its direction stays the one the row already has. */
-      const head = (!C.edit && /^[gt]/i.test(v)) ? v[0] : '';
+      const head = (!C.edit && !C.kind && /^[gt]/i.test(v)) ? v[0] : '';
       const digits = v.slice(head.length).replace(/\D/g, '').slice(0, 5);
       v = head + digits;
       if (v !== composeInput.value) {
@@ -1525,6 +1699,7 @@
       C.who = composeInput.value;
     }
     paintKeys();
+    paintSay();
     draft();
   });
 
@@ -1626,7 +1801,8 @@
 
       const legend = document.createElement('p');
       legend.className = 'hint';
-      legend.textContent = '− they owe you  ·  + you owe them';
+      /* the same words the moves use, so People reads as the place they land */
+      legend.textContent = '− they must pay you  ·  + you must pay them';
       const wrap = document.createElement('div');
       wrap.append(body, legend);
       body = wrap;
@@ -1912,12 +2088,71 @@ You
   }
 
   btnOut.addEventListener('click', () => {
+    if (swallowTap(btnOut)) return;
     if (C.beat === 0) startCompose('-'); else nextBeat();
   });
   btnIn.addEventListener('click', () => {
+    if (swallowTap(btnIn)) return;
     if (C.beat === 0) startCompose('+');
     else if (C.edit) deleteEdit();
   });
+
+  /* ---------- hold a key for the person moves ----------
+
+     A tap on − is a spend and a hold on − is a spend that someone owes you
+     for: the same direction, one level deeper. So the moves hang off the key
+     that already means their direction, and only the two that lean that way
+     are ever offered — the 2×2 exists in the code and never on the screen.
+
+     It fires on the timer, like the row does, and the tap that would have
+     followed is swallowed so the hold does not also start a plain entry. */
+
+  let armKey = null, armKeySeq, heldOn = null;
+
+  function disarmKey() {
+    clearTimeout(armKeySeq);
+    if (armKey) armKey.classList.remove('is-arming');
+    armKey = null;
+  }
+
+  /* The click that closes a hold would otherwise also fire the key's own tap.
+     It is swallowed on the key that was HELD and on nothing else: the commit
+     key is the next thing you press, and it must not be eaten with it. */
+  function swallowTap(btn) {
+    if (heldOn !== btn) return false;
+    heldOn = null;
+    return true;
+  }
+
+  function armMoves(btn, sign) {
+    btn.addEventListener('pointerdown', () => {
+      heldOn = null;
+      if (C.beat !== 0 || C.busy || !overlay.hidden) return;
+      armKey = btn;
+      btn.classList.add('is-arming');
+      armKeySeq = setTimeout(() => {
+        btn.classList.remove('is-arming');
+        armKey = null;
+        heldOn = btn;
+        if (navigator.vibrate) navigator.vibrate(8);
+        buildMoves(sign);
+        showChips(true);
+      }, 420);
+    });
+    for (const t of ['pointerup', 'pointerleave', 'pointercancel']) {
+      btn.addEventListener(t, disarmKey);
+    }
+    btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+  armMoves(btnOut, '-');
+  armMoves(btnIn, '+');
+
+  /* the moves are an offer, not a mode: anywhere else takes it back */
+  document.addEventListener('pointerdown', (e) => {
+    if (C.beat !== 0 || chiprow.hidden) return;
+    if (e.target.closest('.chip') || e.target.closest('.key')) return;
+    showChips(false, true);
+  }, true);
 
   /* ---------- hold a row to fix it ----------
 
