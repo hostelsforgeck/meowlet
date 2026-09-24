@@ -2156,6 +2156,38 @@ You
     showChips(false, true);
   }, true);
 
+  /* ---------- and a tap outside takes back the entry ----------
+
+     Same reading as Escape, on the gesture a phone actually has. The bar, the
+     chip strip and the sentence are the entry; everything else — the ledger,
+     the empty air above it — is the way out, and the keyboard goes with it.
+
+     It waits for the LIFT and measures the travel, because the ledger is a
+     scroller: a flick that starts on a row is a scroll, not a tap, and a
+     scroll must never throw away what you typed. */
+  const TAP_SLOP = 10;
+  let outX = 0, outY = 0, outOn = false;
+
+  const inEntry = (t) => !!(t && t.closest &&
+    (t.closest('.toolbar') || t.closest('.chiprow') || t.closest('.saying')));
+
+  document.addEventListener('pointerdown', (e) => {
+    outOn = C.beat !== 0 && !C.busy && overlay.hidden && !inEntry(e.target);
+    outX = e.clientX;
+    outY = e.clientY;
+  }, true);
+
+  document.addEventListener('pointerup', (e) => {
+    if (!outOn) return;
+    outOn = false;
+    if (C.beat === 0 || C.busy || !overlay.hidden) return;
+    if (Math.hypot(e.clientX - outX, e.clientY - outY) > TAP_SLOP) return;
+    if (inEntry(e.target)) return;
+    cancelCompose();
+  }, true);
+
+  document.addEventListener('pointercancel', () => { outOn = false; }, true);
+
   /* ---------- hold a row to fix it ----------
 
      The app already teaches this gesture on the plate: press, and something
