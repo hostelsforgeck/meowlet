@@ -380,6 +380,50 @@ window.Months = (function () {
       paint();
     },
 
+    /* ---------- one row arrived ----------
+
+       sync() removes every band, recounts every row and re-folds every row.
+       For a commit that is three full walks of the ledger to learn one flow,
+       so money.js hands the row over instead and only what it touched moves:
+       its month's running totals, its own fold state, and a band if that row
+       opened a month nobody had seen yet. */
+    add(row) {
+      if (!card || !row) return;
+      const mm = row.dataset.mm;
+      const day = row.dataset.day;
+      const flow = Number(row.dataset.flow) || 0;
+
+      let M = months.find((x) => x.mm === mm);
+      if (!M) {
+        M = { mm, got: 0, spent: 0, days: {} };
+        months.push(M);
+      }
+      let D = M.days[day];
+      if (!D) D = M.days[day] = { got: 0, spent: 0 };
+      if (flow < 0) { M.spent += -flow; D.spent += -flow; }
+      else { M.got += flow; D.got += flow; }
+
+      const now = mmOf(new Date());
+      let b = card.querySelector('.m-band[data-mm="' + mm + '"]');
+      if (!b) {
+        /* a month with no band is a month that has only just started */
+        b = band(M, mm === now);
+        card.insertBefore(b, row);
+        defaulted.add(mm);
+      } else {
+        b.querySelector('.m-got').textContent = inTx(M.got);
+        b.querySelector('.m-spent').textContent = outTx(M.spent);
+      }
+      shut.delete(now);
+      row.classList.toggle('is-folded', shut.has(mm));
+      b.classList.toggle('m-shut', shut.has(mm));
+      card.dataset.shut = [...shut].join(' ');
+
+      lastTop = scroller.scrollTop;
+      keepAwake();
+      paint();
+    },
+
     /* Re-tune live, the way mascot.js does. */
     set(patch) { Object.assign(C, patch); return Object.assign({}, C); },
     get config() { return Object.assign({}, C); },

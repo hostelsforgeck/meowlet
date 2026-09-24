@@ -76,7 +76,7 @@
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) s = Object.assign(blank(), JSON.parse(raw));
     } catch (_) { /* blocked storage — run in memory */ }
-    s = s || seed();
+    s = s || blank();
 
     /* A ledger saved before this setting existed carries no flow, and one
        saved by a future version could carry anything. Both land on 'both'.
@@ -92,36 +92,12 @@
     } catch (_) { /* nothing to do — the UI keeps working */ }
   }
 
-  /* A sample ledger so a fresh install has something to read.
-     "Clear all" empties it. */
-  function seed() {
-    const s = blank();
-    const entries = [
-      [9, 'Opening balance',      '+', 2000, null,  '09:00'],
-      [8, 'Bus pass',             '-',  350, null,  '08:20'],
-      [8, 'Chai with Arjun',      '-',   40, null,  '16:45'],
-      [7, 'Groceries',            '-',  620, null,  '18:10'],
-      [6, 'Borrowed from Sana',   '+',  400, 'Sana','11:05'],
-      [6, 'Tuition fee received', '+', 1500, null,  '19:30'],
-      [5, 'Notebook and pens',    '-',  180, null,  '08:12'],
-      [4, 'Lent to Ravi',         '-',  500, 'Ravi','09:40'],
-      [3, 'Midnight pizza',       '-',  100, null,  '23:05'],
-      [2, 'Birthday gift from mom', '+', 500, null, '10:20'],
-      [2, 'Movie ticket',         '-',  250, null,  '16:15'],
-      [1, 'Phone recharge',       '-',  299, null,  '09:02'],
-      [1, 'Ravi paid back',       '+',  300, 'Ravi','18:33'],
-      [0, 'Sold old textbooks',   '+',  400, null,  '08:30'],
-      [0, 'Auto fare',            '-',   60, null,  '19:11'],
-    ];
-    for (const [back, reason, op, amount, person, at] of entries) {
-      const when = new Date();
-      when.setDate(when.getDate() - back);
-      const [hh, mm] = at.split(':');
-      when.setHours(Number(hh), Number(mm), 0, 0);
-      record(s, when, op, String(amount), reason, person);
-    }
-    return s;
-  }
+  /* No fiction here, and none loaded by the app: with nothing stored, a new
+     install opens on the empty state rather than on somebody else's chai.
+
+     The generator lives in assets/lab/seed.js and is a bench tool now. It
+     writes the same key this reads, so opening a lab page that loads it
+     leaves three years here too. */
 
   /* ---------- the write path, ported straight across ---------- */
 
@@ -343,6 +319,47 @@
 
   function applyFlow() {
     for (const m of FLOWS) document.body.classList.toggle('flow-' + m, state.flow === m);
+  }
+
+  /* ---------- appending the one row that changed ----------
+
+     render() empties the card and builds every row again. That is the right
+     answer when the ledger RESHUFFLES — an edit, a delete, a rebalance — and
+     the wrong one for the thing you do forty times a day, because a commit
+     changes exactly one row and rebuilding 3,600 to show it cost 252ms.
+
+     A commit can always append: C.when is now, history is in chronological
+     insertion order, and record() puts the new transaction last in the last
+     day. Edits do not come through here. The guard below says so out loud
+     and falls back to a full render if it is ever not true. */
+  function appendOne(key, reason) {
+    const day = state.history[key];
+    if (!day || !card || card.hidden) return false;
+
+    /* The draft row used to be swept away by the rebuild. Nothing rebuilds
+       now, so it has to be shown the door — or the entry lands twice, once
+       as the ghost you were typing and once as the row you committed. */
+    if (draftRow && draftRow.parentNode) draftRow.remove();
+    draftRow = null;
+
+    /* is it really the last transaction of the last day? */
+    const keys = Object.keys(state.history);
+    if (keys[keys.length - 1] !== key) return false;
+    const reasons = Object.keys(day);
+    if (reasons[reasons.length - 1] !== reason) return false;
+
+    const [balance, flow, at] = day[reason];
+    const date = parseKey(key);
+    const isFirst = reasons.length === 1;
+    const row = buildRow(date, isFirst, isFirst && key === dateKey(new Date()),
+                         flow, balance, reason, at);
+    row.dataset.k = key;
+    row.dataset.r = reason;
+    card.appendChild(row);
+    /* the bands keep their own running totals, so they are told rather than
+       recounted — the whole point of not rebuilding */
+    if (window.Months && window.Months.add) window.Months.add(row);
+    return true;
   }
 
   function render() {
@@ -1071,16 +1088,20 @@
     setTimeout(() => fly.remove(), 320);
   }
 
-  /* the same gesture as a category chip, on the beat that now leads */
+  /* Nearly a category chip, with one difference: it MOVES ON.
+
+     A category is a first guess — tap `Travel` and you may still type `cab`
+     after it, so that chip fills the field and waits. A name off the people
+     list is not a guess: it is the person, spelled the way the app already
+     spells them. Waiting there for a second tap on the key asks you to
+     confirm something you have already said. */
   function pickWho(name, btn) {
     if (C.beat !== 3 || C.busy || C.who.trim()) return;
     C.who = name;
     composeInput.value = name;
     flyChip(btn);
-    syncChips(true);
-    paintKeys();
     paintSay();
-    draft();
+    nextBeat();
   }
 
   function pickChip(label, btn) {
@@ -1090,6 +1111,10 @@
     flyChip(btn);
     syncChips(true);
     paintKeys();
+    /* the sentence is the receipt, so it cannot be a beat behind the field:
+       before who-first a person entry never saw these chips, and the tap
+       that fills the reason never had to tell it */
+    paintSay();
     draft();
   }
 
@@ -1672,9 +1697,13 @@
       return;
     }
 
+    const key = dateKey(C.when);
+    const before_n = state.history[key] ? Object.keys(state.history[key]).length : 0;
     record(state, C.when, parsed.op, parsed.amount, C.why.trim(),
       (parsed.person || move) ? C.who.trim() : null);
     save();
+    const reasons = Object.keys(state.history[key]);
+    const added = reasons.length === before_n + 1 ? reasons[reasons.length - 1] : null;
 
     C.beat = 0;
     C.kind = null;
@@ -1682,7 +1711,9 @@
     closeField();
     showChips(false);
     paintKeys();
-    render();
+    /* one row appended, or the whole ledger again if anything looked off */
+    if (!added || !appendOne(key, added)) render();
+    else { applyFlow(); disarmRow(); Plate.rest(); }
     flashLast();
 
     /* the plate carries the OLD balance down, so the roll has a from */
