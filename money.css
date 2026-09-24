@@ -596,7 +596,19 @@
   bottom: calc(var(--bar-bottom) * var(--u) + env(safe-area-inset-bottom, 0px));
 }
 
+/* ---------- and the browser's own header stays put ----------
+
+   Chrome hides that header when the ROOT scroller scrolls — and it quietly
+   promotes any scroller that fills the viewport EXACTLY to be the root. This
+   one did, so flicking the ledger retracted the header, which hands back
+   60px of screen mid-gesture and moves the floor every fixed thing stands on.
+   The bar bobbing was the floor arriving late.
+
+   A scroller one pixel short of the viewport is not a viewport-filling
+   scroller. No promotion, no retracting header, no moving floor — for one
+   pixel off the bottom of a ledger that is already padded by 106. */
 .money .scroller {
+  height: calc(100% - 1px);
   padding-bottom: calc((106 + var(--chips)) * var(--u)
                        + env(safe-area-inset-bottom, 0px));
   transition: padding-bottom var(--travel, 240ms) var(--ease-out);
