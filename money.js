@@ -695,25 +695,61 @@
 
   /* ---------- the app follows the visible area ----------
 
-     The keyboard does not resize the LAYOUT viewport, and `.app` is fixed to
-     that — so its floor, and the bar standing on it, ended up underneath the
-     keyboard. Subtracting a keyboard height from the bar's offset was the
-     wrong shape of fix: it needs innerHeight and visualViewport.height to
-     agree about what a screen is, and on a phone they quietly do not.
+     The keyboard does not resize the LAYOUT viewport on every browser, and
+     `.app` is fixed to that — so its floor, and the bar standing on it, could
+     end up underneath the keyboard. But handing the app the whole visual
+     viewport to fix that made it follow everything ELSE that moves the visual
+     viewport too, and on Chrome the loudest of those is the URL bar: it rides
+     out and back on every flick of the ledger, and the bar wobbled after it.
 
-     So the app is simply given the visible area as its size. Nothing is
-     measured, nothing is guessed, and `bottom: 12u` lands where it reads. */
+     So the app is sized off `100%` — which for a fixed element already IS the
+     visible area, kept in step by the browser itself, with no event to wait
+     for and nothing to lag behind — and the script contributes exactly one
+     number: the keyboard.
+
+     Which is measured as the disagreement between the layout viewport and the
+     visual one, because that is the only thing that can open a gap this wide.
+     It reads 0 where the browser already shrinks the layout viewport for the
+     keyboard (Chrome, via interactive-widget) and the keyboard's real height
+     where it does not (Safari) — correct both times, without asking which
+     browser this is. */
   const vv = window.visualViewport;
+  const appEl = document.querySelector('.app');
+
+  /* A URL bar is about 60px and a keyboard is never under 200, so the line
+     between "browser chrome moved" and "a keyboard opened" sits between. */
+  const KB_MIN = 120;
+  let kbPx = 0, topPx = 0, rideOff;
 
   function lift() {
     if (!vv) return;
     /* Pinch-zoom shrinks the visual viewport too, and resizing the app to a
        zoomed view would fight the zoom instead of helping it. */
-    const zoomed = vv.scale > 1.01;
-    const h = zoomed ? window.innerHeight : vv.height;
-    const top = zoomed ? 0 : vv.offsetTop;
-    document.body.style.setProperty('--vh', h + 'px');
+    const gap = vv.scale > 1.01 ? 0 : window.innerHeight - vv.height;
+    const kb = gap > KB_MIN ? Math.round(gap) : 0;
+    /* Safari scrolls the page under a raised keyboard; the app rides with it.
+       Off the keyboard, offsetTop is the URL bar's business, not ours. */
+    const top = kb ? Math.round(vv.offsetTop) : 0;
+    if (kb === kbPx && top === topPx) return;
+    kbPx = kb;
+    topPx = top;
+    document.body.style.setProperty('--kb', kb + 'px');
     document.body.style.setProperty('--vtop', top + 'px');
+    ride();
+  }
+
+  /* The ease, armed for the length of one ride and then taken away again, so
+     the only height change that ever animates is the one a keyboard caused.
+
+     Both ends of the keyboard arm it, because only one of them is visible from
+     here: where the browser shrinks the LAYOUT viewport for the keyboard, the
+     app changes height without --kb moving a pixel and lift() never runs. So
+     the field arms it as well — opening and closing the field IS the keyboard
+     coming and going, whichever viewport the browser chooses to spend it on. */
+  function ride() {
+    appEl.classList.add('is-riding');
+    clearTimeout(rideOff);
+    rideOff = setTimeout(() => appEl.classList.remove('is-riding'), 500);
   }
 
   if (vv) {
@@ -866,15 +902,24 @@
   /* `focus` only counts as a user gesture inside the handler of one, so every
      call site below is reached synchronously from a click. `mode` is what a
      phone reads, and every beat here wants a keyboard. */
+  /* Writing an attribute the IME reads tears the keyboard down and builds it
+     again on Android — even when the value written is the one already there.
+     Between beats that showed as the keyboard ducking out and coming back, so
+     only an actual CHANGE is written. */
+  function setAttr(el, name, value) {
+    if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+  }
+
   function openField(sign, value, word, mode, hint) {
     clearTimeout(plateSeq);          /* no parked rest() may steal the field */
     plateSwap(fieldLabel(sign));
     composeInput.hidden = false;
     composeInput.classList.toggle('is-word', !!word);
-    composeInput.setAttribute('enterkeyhint', C.beat === 3 ? 'done' : 'next');
+    setAttr(composeInput, 'enterkeyhint', C.beat === 3 ? 'done' : 'next');
     composeInput.placeholder = hint || '';
     composeInput.value = value || '';
-    composeInput.setAttribute('inputmode', mode);
+    setAttr(composeInput, 'inputmode', mode);
+    ride();
     focusField();
     /* Any other beat puts him back to idle; coming BACK to beat 1 with an
        amount already typed picks the pose straight up again. */
@@ -882,6 +927,7 @@
   }
 
   function closeField() {
+    ride();
     refocus = false;
     composeInput.hidden = true;
     composeInput.value = '';
@@ -1569,6 +1615,22 @@ You
 
   function toBottom(how) {
     scroller.scrollTo({ top: scroller.scrollHeight, behavior: how || behavior });
+  }
+
+  /* ---------- the caret stays in the field ----------
+
+     Pressing a button hands it the focus, and the focus leaving the input is
+     what takes the keyboard down. So tapping a chip, or → between beats, had
+     the keyboard duck out and come straight back — with the bar and the plate
+     riding down and up behind it — to end exactly where it started.
+
+     Cancelling mousedown's default is what stops the focus from moving at all.
+     The click still fires, and the chip strip still scrolls: mousedown only
+     arrives once the gesture is over, so nothing a finger does is touched. */
+  for (const bar of [toolbar, chiprow]) {
+    bar.addEventListener('mousedown', (e) => {
+      if (!composeInput.hidden) e.preventDefault();
+    });
   }
 
   btnOut.addEventListener('click', () => {

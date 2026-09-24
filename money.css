@@ -566,16 +566,29 @@
 
    `position: fixed; inset: 0` pins to the LAYOUT viewport, and that does not
    shrink when the keyboard opens — so the bottom of the app, and the bar on
-   it, sat underneath the keyboard. Sizing to visualViewport instead means no
-   keyboard height is ever guessed or corrected for: whatever the OS raises,
-   the app stops exactly on top of it.
+   it, sat underneath the keyboard.
 
-   --vh and --vtop are real px, written by the script. The 100% fallback is
-   what a browser without visualViewport gets, which is what it had before. */
+   100% of a FIXED element already IS the visible area, and the browser keeps
+   it in step with its own chrome frame by frame — no event, no lag, nothing
+   to correct for. So the script measures one thing and one thing only: the
+   keyboard, as --kb. Everything else the browser does to the viewport, the
+   browser is left to do. */
 .money .app {
   top: var(--vtop, 0px);
   bottom: auto;
-  height: var(--vh, 100%);
+  height: calc(100% - var(--kb, 0px));
+}
+
+/* ...and it travels only when the KEYBOARD is what moved it.
+
+   Chrome's URL bar rides out and back on every flick of the ledger, and the
+   app is sized off the area that bar is eating — so a .24s transition on it
+   meant the whole app, and the bar standing on it, chased a height the
+   browser had already finished animating. That lag IS the wobble. The class
+   is armed by the script for the length of a keyboard ride and then goes,
+   so a URL bar moves the floor instantly, as the browser intends, and a
+   keyboard still gets its ease. */
+.money .app.is-riding {
   transition: height .24s var(--ease-out), top .24s var(--ease-out);
 }
 
@@ -833,7 +846,8 @@
 .money .row.is-draft .c-bal { color: #cfcfcf; }
 
 @media (prefers-reduced-motion: reduce) {
-  .money .app, .money .toolbar, .money .chiprow, .money .scroller { transition: none; }
+  .money .app, .money .app.is-riding,
+  .money .toolbar, .money .chiprow, .money .scroller { transition: none; }
 }
 
 
