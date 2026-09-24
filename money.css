@@ -164,6 +164,30 @@
   100% { opacity: 0; }
 }
 
+/* ---------- hold a row to fix it ----------
+
+   The plate already teaches this gesture: press, and something grows to say
+   it is coming. Here it is ink crossing the row — the row IS the progress
+   bar, so nothing is drawn that was not already there.
+
+   An animation rather than a transition, because the class goes on in the
+   same frame the finger lands and a transition needs a frame to leave from. */
+.money .row {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.money .row.is-arming::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: rgba(18, 18, 18, .05);
+  pointer-events: none;
+  animation: row-arm 420ms linear forwards;
+}
+@keyframes row-arm { to { width: 100%; } }
+
 .money .row.is-gone {
   overflow: hidden;
   animation: row-out .34s var(--ease-out) forwards;
@@ -728,7 +752,13 @@
 }
 /* ...and the survivor stops being 35 parts of the bar, so the field gets the
    room instead of a commit key three fingers wide */
-.money .key.is-go, .money .key.is-cold { flex: 0 0 calc(var(--key) * var(--u)); }
+.money .key.is-go, .money .key.is-cold,
+.money .key.is-del { flex: 0 0 calc(var(--key) * var(--u)); }
+
+/* The bin: the slot an entry collapses, given the one job an entry has no use
+   for. Accent on white, not white on accent — a red-filled key would outrank
+   the commit beside it, and the commit is what you are usually here for. */
+.money .key.is-del { color: var(--accent); }
 
 /* #btnOut's glyph is locked to 4u tall for the minus. The compose glyphs are
    square, and an ID in the selector is what it takes to say so. */
@@ -850,6 +880,39 @@
 
    Beat 2 puts the reason on the plate, so without this the amount you
    just typed would be nowhere on screen. */
+/* A row travels between one line and however many the reason needs, and
+   `auto` is a keyword — nothing interpolates to a keyword, so the row used to
+   SNAP open. This is the one declaration that makes it a distance: the height
+   is resolved and the row grows to it. Browsers without it get the snap they
+   already had. */
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+}
+.money .row {
+  transition: height .24s var(--ease-out), padding-block .24s var(--ease-out);
+}
+
+/* ---------- a reason longer than its track ----------
+
+   In the ledger the row is 40.25u and the reason ellipsises, because a column
+   you SCAN wants one line per row — a ragged column cannot be scanned.
+
+   The draft is not being scanned. It is the one row you are reading, so it
+   opens to hold the whole reason and shuts again the moment you commit. The
+   ledger keeps its rhythm; the row you are working on tells the truth. */
+.money .row.is-draft {
+  height: auto;
+  min-height: calc(var(--row-h) * var(--u));
+  padding-block: calc(5 * var(--u));
+}
+.money .row.is-draft .c-reason > span {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  /* a long unbroken word has to land inside the track too */
+  overflow-wrap: anywhere;
+}
+
 /* the row you are building already shows which way it will go */
 .money .row.is-draft { background: #fff6f5; }
 .money .row.is-draft.is-up { background: #f2fbf6; }

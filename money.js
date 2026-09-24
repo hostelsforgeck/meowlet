@@ -153,6 +153,54 @@
     if (person) updatePerson(db, person, op, amount, how, key);
   }
 
+  /* ---------- rewriting the ledger ----------
+
+     Every transaction stores the balance it LEFT BEHIND, so changing one of
+     them changes the figure on every row under it. Rather than patch a delta
+     down the column, the whole ledger is simply run again from the balance it
+     opened on — one pass, no drift, and the same answer whatever was edited.
+
+     The opening balance is not stored anywhere, because it never had to be:
+     it is the first row's balance minus the first row's flow. Read it BEFORE
+     touching anything, since the row that supplies it may be the row going. */
+
+  function opening() {
+    for (const day of Object.values(state.history))
+      for (const t of Object.values(day)) return t[0] - Number(t[1]);
+    return 0;
+  }
+
+  function rebalance(start) {
+    let run = start;
+    for (const day of Object.values(state.history))
+      for (const t of Object.values(day)) { run += Number(t[1]); t[0] = run; }
+    state.current = run;
+  }
+
+  /* A reason is a KEY in the day's object, and object keys carry the ledger's
+     order — so renaming one, or putting a deleted one back, means rebuilding
+     the day around the slot rather than assigning into it. */
+  function insertAt(obj, at, key, value) {
+    const keys = Object.keys(obj);
+    if (at < 0 || at > keys.length) at = keys.length;
+    const out = {};
+    keys.slice(0, at).forEach((k) => { out[k] = obj[k]; });
+    out[key] = value;
+    keys.slice(at).forEach((k) => { out[k] = obj[k]; });
+    return out;
+  }
+
+  function renameTxn(key, from, to) {
+    const day = state.history[key];
+    if (!day || from === to) return from;
+    const at = Object.keys(day).indexOf(from);
+    const rest = {};
+    for (const k of Object.keys(day)) if (k !== from) rest[k] = day[k];
+    const name = uniqueReason(rest, to);
+    state.history[key] = insertAt(rest, at, name, day[from]);
+    return name;
+  }
+
   // undo: drop the newest transaction and rewind the balance to what
   // it was before it, skipping any date group left empty.
   function undo() {
@@ -299,6 +347,9 @@
 
   function render() {
     applyFlow();
+    /* the card is about to be replaced, so any hold still crossing a row on
+       it is holding a node that will not exist when it lands */
+    disarmRow();
     const today = dateKey(new Date());
     card.textContent = '';
     let rows = 0;
@@ -307,8 +358,18 @@
       const date = parseKey(key);
       let first = true;
       for (const [reason, [balance, flow, at]] of Object.entries(txns)) {
-        card.appendChild(
-          buildRow(date, first, first && key === today, flow, balance, reason, at));
+        const row = buildRow(date, first, first && key === today, flow, balance, reason, at);
+        /* what the hold gesture reads back to find the transaction again */
+        row.dataset.k = key;
+        row.dataset.r = reason;
+        /* the row being edited wears the draft skin it would wear if it were
+           being entered — same surface, same rules, nothing new to learn */
+        if (C.edit && C.edit.key === key && C.edit.reason === reason) {
+          row.classList.add('is-draft');
+          if (flow[0] !== '-') row.classList.add('is-up');
+          editRow = row;
+        }
+        card.appendChild(row);
         first = false;
         rows++;
       }
@@ -316,6 +377,7 @@
 
     blankNote.hidden = rows > 0;
     card.hidden = rows === 0;
+    if (C.edit) paintEdit();
     /* the card was just rebuilt from scratch, so the month bands go back on
        it and the folds are re-applied */
     if (window.Months) window.Months.sync();
@@ -336,6 +398,17 @@
     void row.offsetWidth;
     /* the flash takes the direction from the row it is flashing, so nothing
        has to be passed in and an undo cannot disagree with it */
+    if (row.querySelector('.c-flow.is-in')) row.classList.add('is-up');
+    row.classList.add('is-new');
+  }
+
+  /* ...and a row that was rewritten flashes where it stands, which is not
+     necessarily the end of the ledger. */
+  function flashRow(key, reason) {
+    const row = findRow(key, reason);
+    if (!row) return;
+    row.classList.remove('is-new', 'is-up');
+    void row.offsetWidth;
     if (row.querySelector('.c-flow.is-in')) row.classList.add('is-up');
     row.classList.add('is-new');
   }
@@ -684,8 +757,12 @@
   const CHIP_H = 60;          /* 48 chip + the 12 that separates it from the bar */
   const isChip = (s) => CHIPS_OUT.indexOf(s) >= 0 || CHIPS_IN.indexOf(s) >= 0;
 
-  /* beat 0 at rest · 1 amount · 2 reason · 3 who (g/t only) */
-  const C = { beat: 0, sign: '-', raw: '', why: '', who: '', busy: false, when: null };
+  /* beat 0 at rest · 1 amount · 2 reason · 3 who (g/t only)
+     `edit` is the transaction being rewritten, or null for a new one. The
+     beats are the same either way — that is the whole point of holding a row:
+     you land in the flow you already use forty times a day. */
+  const C = { beat: 0, sign: '-', raw: '', why: '', who: '', busy: false,
+              when: null, edit: null };
 
   /* The key you pressed supplies the sign — UNLESS what you typed carries a
      direction of its own. g5 and t5 already mean one (lending is money out,
@@ -936,6 +1013,181 @@
     catRest();
   }
 
+  /* ---------- editing a row that already exists ----------
+
+     Hold a row and you are in the entry flow, pointed at that row instead of
+     at a new one: the plate is the field, − is still the way on, and the +
+     key — which an entry collapses, because the direction is already chosen —
+     becomes the bin. The row itself is the draft, in place, in the ledger.
+
+     Nothing new is drawn and nothing new is learnt. The only thing an edit
+     adds is a use for a key that was already empty. */
+
+  let editRow = null;                    /* the row, in the ledger, being edited */
+
+  function findRow(key, reason) {
+    for (const row of card.querySelectorAll('.row'))
+      if (row.dataset.k === key && row.dataset.r === reason) return row;
+    return null;
+  }
+
+  /* The two cells you are allowed to change, repainted in place. A full
+     render per keystroke would rebuild the whole ledger and re-run the month
+     bands with it; this touches four nodes. */
+  function paintEdit() {
+    if (!C.edit) return;
+    if (!editRow || !editRow.parentNode) editRow = findRow(C.edit.key, C.edit.reason);
+    if (!editRow) return;
+    const up = C.edit.flow[0] !== '-';
+    const text = flowText((up ? '+' : '-') + (C.raw || '0'));
+    const f = editRow.querySelector('.c-flow');
+    const r = editRow.querySelector('.c-reason');
+    if (f) {
+      f.className = 'cell c-flow' + room('c-flow', text) + (up ? ' is-in' : ' is-out') +
+                    (C.beat === 1 ? ' is-live' : '');
+      if (f.firstChild) f.firstChild.textContent = text;
+    }
+    if (r) {
+      r.className = 'cell c-reason' + (C.beat === 2 ? ' is-live' : '');
+      if (r.firstChild) r.firstChild.textContent = C.why;
+    }
+  }
+
+  function startEdit(key, reason) {
+    const day = state.history[key];
+    const t = day && day[reason];
+    if (!t || C.busy || C.beat !== 0) return;
+    clearUndo();
+    C.edit = { key, reason, flow: t[1] };
+    C.beat = 1;
+    C.sign = t[1][0] === '-' ? '-' : '+';
+    C.raw = String(Math.abs(Number(t[1])));
+    C.why = reason;
+    C.who = '';
+    C.when = parseKey(key);
+    openField(C.sign, C.raw, false, 'numeric', '');
+    showChips(false);
+    paintKeys();
+    /* The row is marked where it stands rather than re-rendered. A rebuilt
+       node has no height to grow FROM — it simply appears at its new one —
+       and the growing is the whole point: it is what says THIS row is the
+       one you are holding. Nothing else on screen changed anyway. */
+    editRow = findRow(key, reason);
+    if (editRow) {
+      editRow.classList.add('is-draft');
+      if (C.sign === '+') editRow.classList.add('is-up');
+    }
+    paintEdit();
+    if (window.Mascot) window.Mascot.wake();
+  }
+
+  /* ...and the row comes home before the ledger is rebuilt, for the same
+     reason in reverse: a render replaces the node, and a replaced node has
+     nothing to shrink from. */
+  function shutEdit(then) {
+    const row = editRow;
+    editRow = null;
+    if (!row || !row.parentNode || reduced) { then(); return; }
+    row.classList.remove('is-draft', 'is-up');
+    for (const c of row.querySelectorAll('.cell.is-live')) c.classList.remove('is-live');
+    setTimeout(then, 240);
+  }
+
+  function saveEdit() {
+    const parsed = parseAmount(expr());
+    if (parsed.error) { plateWarn(parsed.error); return; }
+    const before = state.current;
+    const start = opening();
+    const { key, reason } = C.edit;
+    state.history[key][reason][1] = parsed.op + parsed.amount;
+    const name = renameTxn(key, reason, C.why.trim());
+    rebalance(start);
+    save();
+
+    C.edit = null;
+    C.beat = 0;
+    closeField();
+    showChips(false);
+    paintKeys();
+    /* land, then roll — the same order a commit uses. the row shrinks home
+       first, and the figure moves once it has arrived. */
+    shutEdit(() => {
+      render();
+      flashRow(key, name);
+      Plate.roll(before);
+    });
+  }
+
+  /* Delete keeps the plate for the way back rather than rolling the figure:
+     the collapse is the receipt, the balance column has already restated
+     itself under it, and the one thing that is NOT recoverable from the
+     screen is the row you just took out. */
+  function deleteEdit() {
+    const { key, reason } = C.edit;
+    const day = state.history[key];
+    if (!day || !day[reason]) return;
+    const snap = {
+      key, reason,
+      tuple: day[reason].slice(),
+      at: Object.keys(day).indexOf(reason),
+      dayAt: Object.keys(state.history).indexOf(key),
+      start: opening(),
+    };
+    const row = editRow || findRow(key, reason);
+
+    const done = () => {
+      delete state.history[key][reason];
+      if (!Object.keys(state.history[key]).length) delete state.history[key];
+      rebalance(snap.start);
+      save();
+      C.edit = null;
+      C.beat = 0;
+      editRow = null;
+      closeField();
+      showChips(false);
+      paintKeys();
+      render();
+      armUndo(snap);
+    };
+
+    if (row && !reduced) { row.classList.add('is-gone'); setTimeout(done, 340); }
+    else done();
+  }
+
+  /* ---------- the way back ----------
+
+     Five seconds of the plate, and a tap takes it. The plate is already the
+     surface that answers a tap and already the surface that says the short
+     things; this is one more of them, with a consequence attached. */
+
+  let undoSnap = null, undoSeq;
+
+  function armUndo(snap) {
+    undoSnap = snap;
+    clearTimeout(plateSeq);
+    clearTimeout(undoSeq);
+    plateSwap(span('pl-msg', '↶ undo'));
+    plateEl.setAttribute('aria-label', 'Undo delete');
+    undoSeq = setTimeout(() => { undoSnap = null; Plate.rest(); }, reduced ? 1600 : 5000);
+  }
+
+  function clearUndo() { clearTimeout(undoSeq); undoSnap = null; }
+
+  function undoDelete() {
+    const snap = undoSnap;
+    clearUndo();
+    const before = state.current;
+    if (!state.history[snap.key])
+      state.history = insertAt(state.history, snap.dayAt, snap.key, {});
+    state.history[snap.key] =
+      insertAt(state.history[snap.key], snap.at, snap.reason, snap.tuple);
+    rebalance(snap.start);
+    save();
+    render();
+    flashRow(snap.key, snap.reason);
+    Plate.roll(before);
+  }
+
   /* ---------- the draft row ----------
 
      Beat 2 puts the reason on the plate, so without this the amount you just
@@ -943,6 +1195,8 @@
   let draftRow = null;
 
   function draft() {
+    /* an edit already HAS a row, and it is the one you are looking at */
+    if (C.edit) { paintEdit(); return; }
     if (draftRow && draftRow.parentNode) draftRow.remove();
     draftRow = null;
     if (C.beat === 0 || C.busy) return;
@@ -997,9 +1251,19 @@
       keyGlyph(btnOut, 'minus');
       return;
     }
-    /* composing: the direction is already chosen, so + collapses and −
-       becomes the only way forward */
-    btnIn.className = 'key k-in is-gone';
+    /* Composing: the direction is already chosen, so + collapses and −
+       becomes the only way forward.
+
+       Editing gives that freed slot the one job the entry flow has no use
+       for. A row that already exists is the only row there is anything to
+       delete, so the bin exists exactly while one is open and nowhere else. */
+    if (C.edit) {
+      btnIn.className = 'key k-in is-del';
+      btnIn.setAttribute('aria-label', 'Delete');
+      keyGlyph(btnIn, 'bin');
+    } else {
+      btnIn.className = 'key k-in is-gone';
+    }
     const armed = C.beat === 1 ? !!C.raw : (C.beat === 2 ? !!C.why.trim() : !!C.who.trim());
     btnOut.className = 'key k-out ' + (armed ? 'is-go' : 'is-cold');
     btnOut.setAttribute('aria-label', C.beat === 1 ? 'Next' : 'Save');
@@ -1011,6 +1275,9 @@
     minus: { vb: '0 0 18 4',  d: 'M1.5 2H16.5' },
     next:  { vb: '0 0 18 18', d: 'M1.5 9H16.5M10 2.5L16.5 9L10 15.5' },
     tick:  { vb: '0 0 18 18', d: 'M2 9.5L7 14.5L16 3.5' },
+    /* the bin is drawn, not struck — at stroke 3 it is a black box */
+    bin:   { vb: '0 0 18 18', w: 1.6,
+             d: 'M3 4.5h12M7 4.5V2.5h4v2M4.5 4.5l.8 11h7.4l.8-11M7.5 7.5v5M10.5 7.5v5' },
   };
   function keyGlyph(btn, name) {
     btn.textContent = '';
@@ -1027,7 +1294,7 @@
     p.setAttribute('d', g.d);
     p.setAttribute('fill', 'none');
     p.setAttribute('stroke', 'currentColor');
-    p.setAttribute('stroke-width', '3');
+    p.setAttribute('stroke-width', String(g.w || 3));
     p.setAttribute('stroke-linecap', 'round');
     p.setAttribute('stroke-linejoin', 'round');
     svg.appendChild(p);
@@ -1068,12 +1335,15 @@
       syncChips();
       paintKeys();
       draft();
-      toBottom();
+      /* an edit is already on screen where it lives; dragging the ledger to
+         the bottom would take the row you are working on off it */
+      if (!C.edit) toBottom();
       return;
     }
 
     if (C.beat === 2) {
       if (!C.why.trim()) return;
+      if (C.edit) { saveEdit(); return; }
       const parsed = parseAmount(expr());
       if (parsed.person) {
         C.beat = 3;
@@ -1115,7 +1385,9 @@
   }
 
   function cancelCompose(message) {
+    const wasEdit = !!C.edit;
     C.beat = 0;
+    C.edit = null;
     C.raw = '';
     C.why = '';
     C.who = '';
@@ -1123,8 +1395,11 @@
     closeField();
     showChips(false);
     paintKeys();
-    render();
-    if (message) Plate.say(message); else Plate.rest();
+    const done = () => {
+      render();
+      if (message) Plate.say(message); else Plate.rest();
+    };
+    if (wasEdit) shutEdit(done); else { editRow = null; done(); }
   }
 
   function plateWarn(text) {
@@ -1219,7 +1494,10 @@
          the five-digit ceiling is enforced here now: a drawn pad could refuse
          a sixth digit by simply not having one, a real keyboard cannot. */
       let v = composeInput.value.replace(/^[+-]+/, '');
-      const head = /^[gt]/i.test(v) ? v[0] : '';
+      /* g and t open a person's ledger, and an edit cannot reopen one — the
+         history row does not record whose it was. So an edit takes digits,
+         and its direction stays the one the row already has. */
+      const head = (!C.edit && /^[gt]/i.test(v)) ? v[0] : '';
       const digits = v.slice(head.length).replace(/\D/g, '').slice(0, 5);
       v = head + digits;
       if (v !== composeInput.value) {
@@ -1636,7 +1914,60 @@ You
   btnOut.addEventListener('click', () => {
     if (C.beat === 0) startCompose('-'); else nextBeat();
   });
-  btnIn.addEventListener('click', () => { if (C.beat === 0) startCompose('+'); });
+  btnIn.addEventListener('click', () => {
+    if (C.beat === 0) startCompose('+');
+    else if (C.edit) deleteEdit();
+  });
+
+  /* ---------- hold a row to fix it ----------
+
+     The app already teaches this gesture on the plate: press, and something
+     grows to tell you it is coming. Here the ink crosses the row, and when it
+     lands the row is open in the bar.
+
+     It fires on the timer rather than the lift, because a press that has
+     visibly finished and then waits for you to let go reads as broken. The
+     lift is used for one thing only — a second, free go at the keyboard, for
+     browsers that will not raise it from a timer. */
+
+  let armRow = null, armSeq, armX = 0, armY = 0;
+
+  function disarmRow() {
+    clearTimeout(armSeq);
+    if (armRow) armRow.classList.remove('is-arming');
+    armRow = null;
+  }
+
+  card.addEventListener('pointerdown', (e) => {
+    if (C.beat !== 0 || C.busy || !overlay.hidden) return;
+    const row = e.target.closest('.row');
+    if (!row || !row.dataset.k) return;
+    armX = e.clientX;
+    armY = e.clientY;
+    armRow = row;
+    row.classList.add('is-arming');
+    armSeq = setTimeout(() => {
+      row.classList.remove('is-arming');
+      armRow = null;
+      if (navigator.vibrate) navigator.vibrate(8);
+      startEdit(row.dataset.k, row.dataset.r);
+    }, 420);
+  });
+
+  /* a press that turns into a scroll was a scroll */
+  card.addEventListener('pointermove', (e) => {
+    if (armRow && Math.hypot(e.clientX - armX, e.clientY - armY) > 8) disarmRow();
+  }, { passive: true });
+
+  card.addEventListener('pointerup', () => {
+    disarmRow();
+    if (C.edit && !composeInput.hidden && document.activeElement !== composeInput) focusField();
+  });
+  card.addEventListener('pointercancel', disarmRow);
+  card.addEventListener('pointerleave', disarmRow);
+
+  /* a long press on a row otherwise raises the text-selection callout */
+  card.addEventListener('contextmenu', (e) => { if (e.target.closest('.row')) e.preventDefault(); });
   /* ---------- the plate answers two gestures ----------
 
      A tap pokes the cat; a press and hold opens You. They cannot share one
@@ -1669,7 +2000,10 @@ You
     if (!holding) return;
     holding = false;
     const wasGrowing = window.Mascot && window.Mascot.press(false);
-    if (!wasGrowing && window.Mascot) window.Mascot.poke();
+    if (wasGrowing) return;
+    /* while the way back is on offer, the tap takes it — the cat can wait */
+    if (undoSnap) { undoDelete(); return; }
+    if (window.Mascot) window.Mascot.poke();
   }
   plateEl.addEventListener('pointerup', release);
   plateEl.addEventListener('pointerleave', release);
@@ -1689,6 +2023,7 @@ You
     if (window.Mascot && !plateEl.contains(e.target)) window.Mascot.wake();
   }, { passive: true });
   scroller.addEventListener('scroll', () => {
+    disarmRow();
     if (window.Mascot) window.Mascot.wake();
   }, { passive: true });
 
