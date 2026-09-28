@@ -214,7 +214,9 @@
   border-radius: calc(22 * var(--u));
   background: #121212;
   color: #fff;
-  overflow: hidden;
+  overflow: visible;
+  clip-path: inset(0 round calc(22 * var(--u)));
+  opacity: .999;
   cursor: pointer;
   touch-action: manipulation;
   /* the plate is held as well as tapped, and a held button otherwise raises the
@@ -228,9 +230,16 @@
   transition: background-color .16s var(--ease-out), transform .16s var(--ease-out);
 }
 .money .plate:active { background: #1c1c1c; transform: scale(.992); }
-.money .plate:focus-visible {
-  outline: calc(2 * var(--u)) solid var(--accent);
-  outline-offset: calc(2 * var(--u));
+/* A clip-path cuts an outline off with everything else, so the focus ring is
+   drawn INSIDE the plate instead — same weight, same colour, same gap. */
+.money .plate:focus-visible { outline: none; }
+.money .plate:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: calc(2 * var(--u));
+  border: calc(2 * var(--u)) solid var(--accent);
+  border-radius: calc(20 * var(--u));
+  pointer-events: none;
 }
 
 .money .pl-layer {
@@ -790,9 +799,10 @@
 /* ---------- a person, on the beat that asks for one ----------
 
    The chip is the name; the figure after it is where that person stands, in
-   the two colours the ledger already uses. `+ new` is drawn rather than
-   filled, because it is not an answer — it is the note that a name off the
-   list is allowed, and the keyboard behind it is what actually takes one. */
+   the two colours the ledger already uses. A dashed `+ new` chip used to
+   close the strip, saying a name off the list was allowed — but the keyboard
+   is already up on this beat and typing one has always worked, so it was a
+   button that announced what the screen was doing anyway. */
 .money .chip .chip-net {
   margin-left: calc(7 * var(--u));
   font-size: calc(15 * var(--u));
@@ -800,10 +810,6 @@
 }
 .money .chip .chip-net.is-mine   { color: var(--accent); }
 .money .chip .chip-net.is-theirs { color: var(--in); }
-.money .chip.is-fresh {
-  border-style: dashed;
-  color: #8a8a8a;
-}
 
 /* Two of them and never more, so they are not a strip you scroll — they are
    the whole offer. Half the row each, centred, nothing past either edge: the

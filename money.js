@@ -967,13 +967,16 @@
      Asking for the name FIRST is what makes this possible: the row the moves
      were standing in is free, and the answer is nearly always one of three
      names the app is already holding. Each chip carries that person's net,
-     so the strip answers the question and reports the standing at once. The
-     dashed last chip is the reminder that a name off the list is allowed —
-     the keyboard is already up, so it only has to say so. */
+     so the strip answers the question and reports the standing at once.
+
+     Names only. A dashed `+ new` chip used to close the strip, and all it did
+     was clear the field and focus it — which is where the caret already was,
+     with the keyboard already up. Returns whether it found anyone, because
+     with nobody on the list there is no strip to show. */
   function buildPeople() {
     chipscroll.textContent = '';
+    chipscroll.classList.remove('is-moves');
     const names = Object.keys(state.people);
-    chipscroll.classList.toggle('is-moves', names.length === 1);
     for (const name of names) {
       const net = Number(state.people[name][0]);
       const b = document.createElement('button');
@@ -986,14 +989,9 @@
       b.addEventListener('click', () => pickWho(name, b));
       chipscroll.appendChild(b);
     }
-    const fresh = document.createElement('button');
-    fresh.type = 'button';
-    fresh.className = 'chip is-fresh';
-    fresh.textContent = '+ new';
-    fresh.addEventListener('click', () => { composeInput.value = ''; focusField(); });
-    chipscroll.appendChild(fresh);
     chipscroll.scrollLeft = 0;
     chipEdges();
+    return names.length > 0;
   }
 
   function buildChips() {
@@ -1051,7 +1049,7 @@
      is up throughout now, so it is no longer part of the question — the chips
      simply sit above it until one of them, or the keyboard, answers. */
   function syncChips(fade) {
-    if (C.beat === 3 && !C.who.trim()) { buildPeople(); showChips(true); return; }
+    if (C.beat === 3 && !C.who.trim() && buildPeople()) { showChips(true); return; }
     if (C.beat === 2 && !C.why) { buildChips(); showChips(true); return; }
     showChips(false, fade);
   }
