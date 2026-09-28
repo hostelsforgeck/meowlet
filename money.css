@@ -927,28 +927,41 @@
 .money .chipscroll::-webkit-scrollbar { width: 0; height: 0; }
 .money .chipscroll .chip { scroll-snap-align: start; }
 
-/* ...and fade whichever edge actually has something past it, so mid-scroll
-   a chip dissolves instead of being cut. Both are driven by the scroll
-   position, so at rest on the left the first chip is never faded.
+/* ---------- the rail stands on something ----------
 
-   WHILE SCROLLING AND NOT A MOMENT LONGER. A mask does not fade a chip onto
-   the page, it makes the chip itself see-through — and the strip floats over
-   the ledger, so a faded chip had a day number and a figure showing through
-   its own white fill. It read as a broken chip rather than a clipped one.
-   Moving, that is the point and the ledger under it is moving too; at rest
-   the chip is solid and simply ends at the edge, which is what an edge is
-   for. is-scrolling is added on scroll and taken off 160ms after it stops. */
-.money .chipscroll.is-scrolling.fade-r {
-  -webkit-mask-image: linear-gradient(90deg, #000 86%, transparent 100%);
-          mask-image: linear-gradient(90deg, #000 86%, transparent 100%);
-}
-.money .chipscroll.is-scrolling.fade-l {
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14%);
-          mask-image: linear-gradient(90deg, transparent 0, #000 14%);
-}
-.money .chipscroll.is-scrolling.fade-l.fade-r {
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
-          mask-image: linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
+   The strip floats above the ledger, and until now it floated on NOTHING: a
+   chip outline landed among a row of figures, and the edge treatment — a mask,
+   which does not fade a chip onto the page but makes the chip itself
+   see-through — printed a day number inside a chip's own white fill.
+
+   Neither is a fault in the mask. Both are what happens when a control is
+   drawn directly on top of content with nothing between the two.
+
+   So the control gets a ground, the same one the bar below it already sits on:
+   the page colour, solid under the chips and feathered out above them. The
+   ledger DISSOLVES as it passes beneath the controls instead of colliding with
+   them, which is the one thing every phone does at the bottom of a screen and
+   this app was doing nowhere.
+
+   With a ground there is nothing left for a mask to fix, so there is no mask:
+   a chip is opaque at every moment, and the one at the edge is simply cut by
+   the edge — which is what an edge is, and what says there is more to the
+   side. The snap still parks a chip clear of it at rest. */
+.money .chiprow::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  right: 0;
+  /* taller than the chips: the feather needs somewhere to happen, and the
+     bottom edge has to reach the bar's own zone so the two read as one plane */
+  top: calc(-30 * var(--u));
+  bottom: calc(-14 * var(--u));
+  background: linear-gradient(to top,
+    var(--bg) 0,
+    var(--bg) 62%,
+    rgba(243, 243, 243, 0) 100%);
+  pointer-events: none;
 }
 
 .money .chip {

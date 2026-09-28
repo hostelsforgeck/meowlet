@@ -883,7 +883,6 @@
 
     const keys = Object.keys(state.history);
     const pairs = new Map();
-    let last = null;                  /* the newest row of this sign, for the floor */
 
     /* Newest day first, and STOP at the window: history is in chronological
        insertion order — appendOne already relies on that — so three years of
@@ -902,7 +901,6 @@
         const why = reasons[j].replace(/\(\d+\)$/, '').trim();
         const amount = Math.abs(Number(flow));
         if (!why || !amount) continue;
-        if (!last) last = { why, amount };
         const k = why.toLowerCase() + '|' + amount;
         const seen = pairs.get(k);
         /* walking backwards means the first sighting IS the most recent one, so
@@ -926,11 +924,10 @@
       shelf.push(e);
     }
 
-    /* The floor. Nothing has earned a slot — a ledger a week old, or a life
-       without a pattern — so offer the last entry instead. It counts nothing and
-       proves nothing; it is simply the likeliest repeat on a ledger too young to
-       have a habit, and it costs the shelf nothing once a real one shows up. */
-    if (!shelf.length && last) shelf.push({ why: last.why, amount: last.amount, again: true });
+    /* Nothing earned a slot, so nothing is offered. A shelf that falls back to
+       the last thing you typed is guessing, and a guess here writes a row on ONE
+       tap — so an unearned shelf simply does not appear, and beat 1 is exactly
+       what it was before any of this existed. */
     return shelf;
   }
 
@@ -947,12 +944,11 @@
       const fig = document.createElement('span');
       fig.className = 'chip-net ' + (sign === '-' ? 'is-mine' : 'is-theirs');
       fig.textContent = figureOf(sign, e.amount);
-      b.append(document.createTextNode(e.again ? 'again · ' + e.why : e.why), fig);
+      b.append(document.createTextNode(e.why), fig);
       b.addEventListener('click', () => pickRecur(e, b));
       chipscroll.appendChild(b);
     }
     chipscroll.scrollLeft = 0;
-    chipEdges();
     return shelf.length > 0;
   }
   const isChip = (s) => CHIPS_OUT.indexOf(s) >= 0 || CHIPS_IN.indexOf(s) >= 0;
@@ -1111,7 +1107,6 @@
       chipscroll.appendChild(b);
     }
     chipscroll.scrollLeft = 0;
-    chipEdges();
   }
 
   /* ---------- who, out of the people you already have ----------
@@ -1142,7 +1137,6 @@
       chipscroll.appendChild(b);
     }
     chipscroll.scrollLeft = 0;
-    chipEdges();
     return names.length > 0;
   }
 
@@ -1158,28 +1152,8 @@
       chipscroll.appendChild(b);
     }
     chipscroll.scrollLeft = 0;
-    chipEdges();
   }
 
-  /* Fade only the edge that actually has something past it, so at rest on
-     the left the first chip is never faded. */
-  function chipEdges() {
-    const max = chipscroll.scrollWidth - chipscroll.clientWidth;
-    chipscroll.classList.toggle('fade-l', chipscroll.scrollLeft > 2);
-    chipscroll.classList.toggle('fade-r', max > 2 && chipscroll.scrollLeft < max - 2);
-  }
-  /* The edge fades are a mask, and a mask makes the CHIP see-through rather
-     than fading it onto anything — with the ledger behind the strip, a day
-     number was showing through a chip's own white fill. So the mask is only
-     on while the strip is actually moving: mid-scroll it dissolves a chip
-     that is half-cut, and the moment it stops the chip is solid again. */
-  let chipStill;
-  chipscroll.addEventListener('scroll', () => {
-    chipscroll.classList.add('is-scrolling');
-    clearTimeout(chipStill);
-    chipStill = setTimeout(() => chipscroll.classList.remove('is-scrolling'), 160);
-    chipEdges();
-  }, { passive: true });
 
   let chipSeq;
   function showChips(on, fade) {
@@ -1944,6 +1918,10 @@
   /* ---------- input ---------- */
 
   composeInput.addEventListener('input', () => {
+    /* Somebody is typing, so the nap is over — on every beat, not just the one
+       that talks to him about digits. Asleep he springs up with the same wobble
+       a tap gives him; awake this costs nothing but a pushed-back clock. */
+    if (window.Mascot && window.Mascot.rouse) window.Mascot.rouse();
     if (C.beat === 1) {
       /* The sign is the key you pressed; it is not part of what you type. And
          the five-digit ceiling is enforced here now: a drawn pad could refuse
@@ -2526,7 +2504,14 @@ You
   let holding = false;
 
   plateEl.addEventListener('pointerdown', () => {
-    if (C.beat !== 0 || C.busy) return;   /* mid-entry the plate is a field */
+    if (C.beat !== 0 || C.busy) {
+      /* Mid-entry the plate is a FIELD: this touch belongs to the caret, and
+         nothing here may take it. But a cat asleep on that field is still a cat
+         you just touched, so he comes up — the same wobble a tap gives him at
+         rest, and nothing at all if he was already awake. */
+      if (!C.busy && window.Mascot && window.Mascot.rouse) window.Mascot.rouse();
+      return;
+    }
     holding = true;
     if (window.Mascot) window.Mascot.press(true, () => { holding = false; showYou(); });
   });

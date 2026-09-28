@@ -1071,8 +1071,26 @@ window.Mascot = (function () {
        be the one gesture that punished you for using the thing. */
     poke() {
       if (!el) return;
+      /* mood() plays nothing under reduced motion — so without this, poking a
+         dozing cat there removed no class and he stayed under, z's and all */
+      if (reduced) { api.wake(); return; }
       api.mood(el.classList.contains('is-doze') ? 'wake' : 'tap');
       countdown();
+    },
+
+    /* A keystroke is not a poke. It means a person is there, so it must end the
+       nap — but it must not wobble a cat who was already awake, or every letter
+       of a reason would shake him. Asleep, he comes up exactly the way a tap
+       brings him up; awake, this only pushes the nap back.
+
+       Waking mid-entry used to be silent, and on two of the three beats it did
+       not happen at all: only the amount beat ever spoke to him, so he kept his
+       z's while a name or a reason was typed under his nose. */
+    rouse() {
+      if (!el) return;
+      if (!el.classList.contains('is-doze')) { countdown(); return; }
+      if (reduced) { api.wake(); return; }
+      api.mood('wake');
     },
 
     /* Held down, and let go. The host calls these around its own hold timer —
