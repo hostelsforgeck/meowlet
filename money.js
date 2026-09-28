@@ -6,8 +6,9 @@
      { name, current, history: { "15_Mar_25": { reason: [balanceAfter, "+100"] } },
        people: { name: [owed, reason, date] } }
 
-   Same command grammar in the amount field: 5, +5, -5, g5 (give),
-   t5 (take). Whole rupees only. Same reason de-duplication, same
+   Same command grammar in the amount field: 5, +5, -5. Whole rupees
+   only, and no letters: the terminal's g5 and t5 are a HELD key here.
+   Same reason de-duplication, same
    undo, same people ledger, same export tables. Storage is
    localStorage instead of shelve.
 
@@ -120,12 +121,21 @@
     else db.people[name] = [String(owed), how, key];
   }
 
+  /* v2.1: a transaction that involved a person keeps the NAME as a fourth
+     slot — [balanceAfter, flow, "HH:MM", who]. It is appended rather than
+     folded into the reason because the reason is the day's KEY: put `Ravi`
+     in there and renaming the row would rename the person, and two rows for
+     the same person on one day would collide into `Ravi · Tea(1)`.
+
+     A row saved before this has three slots and reads back as a row with no
+     name, which is exactly what it is. Nothing migrates. */
   function record(db, when, op, amount, how, person) {
     db.current += (op === '+' ? Number(amount) : -Number(amount));
     const key = dateKey(when);
     if (!db.history[key]) db.history[key] = {};
-    db.history[key][uniqueReason(db.history[key], how)] =
-      [db.current, `${op}${amount}`, clock(when)];
+    const txn = [db.current, `${op}${amount}`, clock(when)];
+    if (person) txn.push(person);
+    db.history[key][uniqueReason(db.history[key], how)] = txn;
     if (person) updatePerson(db, person, op, amount, how, key);
   }
 
@@ -195,7 +205,7 @@
 
   /* ---------- amount grammar ---------- */
 
-  // 5 / +5 / -5 add or subtract; g5 gives (lends), t5 takes (collects).
+  // 5 / +5 / -5 add or subtract. Nothing else: a person entry is a held key.
   /* One entry tops out at five digits. Every route in — typed, lent, collected —
      goes through here, so this is the only place the ceiling has to exist.
      It is checked on the VALUE, not the digit count: 000099999 is five digits
@@ -212,25 +222,23 @@
     const x = raw.trim();
     if (x === '') return { error: "Type an amount, for example +5" };
 
-    let op = '+', digits = x, person = false;
+    let op = '+', digits = x;
 
     if (!/^\d+$/.test(x)) {
-      const head = x[0].toLowerCase();
+      const head = x[0];
       digits = x.slice(1);
       if (!/^\d+$/.test(digits)) {
         return { error: /[.,]/.test(digits) ? 'Whole rupees only — no decimals.' : 'INVALID!' };
       }
       if (head === '+') { op = '+'; }
       else if (head === '-') { op = '-'; }
-      else if (head === 'g') { op = '-'; person = true; }
-      else if (head === 't') { op = '+'; person = true; }
       else return { error: 'INVALID!' };
     }
 
     if (Number(digits) > MAX_ENTRY) {
       return { error: `One entry tops out at ${rupees(MAX_ENTRY)}. Split it.` };
     }
-    return { op, amount: digits, person };
+    return { op, amount: digits };
   }
 
   /* ---------- render ---------- */
@@ -274,7 +282,11 @@
      The day number only prints on the first row of a date; continuation
      rows indent to the time, which reads as "same day" without a rule or a
      repeat. There is no weekday letter and no heading row. */
-  function buildRow(date, isFirst, isToday, flow, balance, reason, at) {
+  function buildRow(date, isFirst, isToday, flow, balance, reason, at, who) {
+    /* Whose money it was, then what it was for. The name leads because that is
+       what you are looking for when you scan a ledger for a person — the
+       reason is how you tell two of their rows apart, not how you find them. */
+    const label = who ? who + ' \u00b7 ' + reason : reason;
     const row = document.createElement('div');
     row.className = 'row';
     row.setAttribute('role', 'row');
@@ -282,7 +294,7 @@
     if (isToday) row.classList.add('is-today');
     row.setAttribute('aria-label',
       `${date.getDate()} ${MONTHS[date.getMonth()]}${at ? ' ' + at : ''}, ` +
-      `${flowText(flow)}, balance ${rupees(balance)}, ${reason}`);
+      `${flowText(flow)}, balance ${rupees(balance)}, ${label}`);
 
     /* stamped for months.js: the month band, the day pill and their totals
        are all derived from these three, so it never has to see the state */
@@ -313,7 +325,7 @@
     const flowCell = cell('c-flow', flowText(flow));
     flowCell.classList.add(flow[0] === '-' ? 'is-out' : 'is-in');
 
-    row.append(when, cell('c-reason', reason), flowCell, cell('c-bal', plain(balance)));
+    row.append(when, cell('c-reason', label), flowCell, cell('c-bal', plain(balance)));
     return row;
   }
 
@@ -348,11 +360,11 @@
     const reasons = Object.keys(day);
     if (reasons[reasons.length - 1] !== reason) return false;
 
-    const [balance, flow, at] = day[reason];
+    const [balance, flow, at, who] = day[reason];
     const date = parseKey(key);
     const isFirst = reasons.length === 1;
     const row = buildRow(date, isFirst, isFirst && key === dateKey(new Date()),
-                         flow, balance, reason, at);
+                         flow, balance, reason, at, who);
     row.dataset.k = key;
     row.dataset.r = reason;
     card.appendChild(row);
@@ -374,8 +386,9 @@
     for (const [key, txns] of Object.entries(state.history)) {
       const date = parseKey(key);
       let first = true;
-      for (const [reason, [balance, flow, at]] of Object.entries(txns)) {
-        const row = buildRow(date, first, first && key === today, flow, balance, reason, at);
+      for (const [reason, [balance, flow, at, who]] of Object.entries(txns)) {
+        const row = buildRow(date, first, first && key === today,
+                             flow, balance, reason, at, who);
         /* what the hold gesture reads back to find the transaction again */
         row.dataset.k = key;
         row.dataset.r = reason;
@@ -965,20 +978,20 @@
      in, and the blanks fill left to right instead of the name landing last
      and sitting first.
 
-     `g5` cannot join in: it only declares a person once the amount parses,
-     and you cannot ask for a name before you know one is wanted. So that
-     path still asks who last, and the who-beat is appended when it appears. */
+     There are two walks and no third. The typed `g5` and `t5` are gone: they
+     were a second door into the same room and the worse one, because a typed
+     shortcut only admits to being a person entry once the amount parses — too
+     late to ask the name first — while a held key knows the direction before
+     a character is typed. One way in, and it is the one that asks in the
+     order the sentence reads. */
   const SEQ_PLAIN  = [1, 2];
-  const SEQ_PERSON = [1, 2, 3];
   const SEQ_MOVE   = [3, 1, 2];
   C.seq = SEQ_PLAIN;
   const stepOf = () => C.seq.indexOf(C.beat);
 
-  /* The key you pressed supplies the sign — UNLESS what you typed carries a
-     direction of its own. g5 and t5 already mean one (lending is money out,
-     collecting is money in), so prepending the key's sign would turn them
-     into -g5, which parseAmount rightly refuses. */
-  const expr = () => (/^[+\-gt]/i.test(C.raw) ? C.raw : C.sign + C.raw);
+  /* The key you pressed supplies the sign, and nothing typed can argue with
+     it any more: the field takes digits and only digits. */
+  const expr = () => C.sign + C.raw;
 
   /* ---------- the app follows the visible area ----------
 
@@ -1634,7 +1647,12 @@
     inner.append(num, t);
     when.appendChild(inner);
 
-    const why = cell('c-reason', C.why || '');
+    /* The draft is a rehearsal of the row, so it wears the row's own label:
+       with a person, the name leads. The separator waits for the reason —
+       `Ravi · ` with nothing after it is a sentence cut in half. */
+    const nm = C.kind ? C.who.trim() : '';
+    const why = cell('c-reason',
+      nm && C.why ? nm + ' · ' + C.why : (nm || C.why || ''));
     if (C.beat === 2 || (C.beat === 3 && C.why)) why.classList.add('is-live');
 
     const flowCell = cell('c-flow',
@@ -1767,10 +1785,6 @@
       if (!C.raw) return;
       const parsed = parseAmount(expr());
       if (parsed.error) { plateWarn(parsed.error); return; }
-      /* g5 and t5 only now admit to being a person, so the beat is appended
-         rather than planned — and never twice, and never to a move that has
-         already asked */
-      if (parsed.person && C.seq === SEQ_PLAIN) C.seq = SEQ_PERSON;
     }
     if (C.beat === 2 && !C.why.trim()) return;
     if (C.beat === 3 && !C.who.trim()) return;
@@ -1873,7 +1887,7 @@
     const key = dateKey(C.when);
     const before_n = state.history[key] ? Object.keys(state.history[key]).length : 0;
     record(state, C.when, parsed.op, parsed.amount, C.why.trim(),
-      (parsed.person || move) ? C.who.trim() : null);
+      move ? C.who.trim() : null);
     save();
     const reasons = Object.keys(state.history[key]);
     const added = reasons.length === before_n + 1 ? reasons[reasons.length - 1] : null;
@@ -1938,9 +1952,7 @@
       /* g and t open a person's ledger, and an edit cannot reopen one — the
          history row does not record whose it was. So an edit takes digits,
          and its direction stays the one the row already has. */
-      const head = (!C.edit && !C.kind && /^[gt]/i.test(v)) ? v[0] : '';
-      const digits = v.slice(head.length).replace(/\D/g, '').slice(0, 5);
-      v = head + digits;
+      v = v.replace(/\D/g, '').slice(0, 5);
       if (v !== composeInput.value) {
         const atEnd = composeInput.selectionStart === composeInput.value.length;
         composeInput.value = v;
@@ -1950,7 +1962,6 @@
       /* the first digit says you are typing your own figure, so the shelf has
          nothing left to offer — and clearing back to empty brings it back */
       syncChips(true);
-      syncSign();
       catTyped();
     } else if (C.beat === 2) {
       /* typing straight after a chip refines it, so the space belongs to the
@@ -1974,17 +1985,6 @@
     draft();
   });
 
-  /* g5 is money out and t5 is money in, so the sign on the plate follows the
-     parse rather than the key — otherwise the label contradicts the row. */
-  function syncSign() {
-    const el = plateEl.querySelector('.pl-layer:not(.out) .pl-sign');
-    if (!el) return;
-    const parsed = parseAmount(expr());
-    const op = parsed.error ? C.sign : parsed.op;
-    el.textContent = op === '+' ? '+' : '\u2212';
-    el.classList.toggle('is-out', op !== '+');
-  }
-
   /* ---------- the cat ----------
 
      He lives on the plate, so while beat 1 is running he answers the digits:
@@ -1993,8 +1993,7 @@
      guarded — and he is TOLD what happened rather than left to work it out,
      the same bargain poke() and mood() already make.
 
-     The sign is the PARSE's, not the key's, for the reason syncSign gives:
-     g5 is money out whichever key opened the field. */
+     The sign is simply the key's, now that nothing typed can flip it. */
   let catSeen = 0;
 
   function catTyped() {
@@ -2258,8 +2257,6 @@ Amount field
   5    add 5 to the balance
   +5   the same thing
   -5   take 5 off the balance
-  g5   give 5 to someone (they owe you)
-  t5   take 5 back from someone
 
   Whole rupees only. No decimals.
 
