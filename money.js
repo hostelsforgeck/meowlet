@@ -775,17 +775,23 @@
      them) and decides which key holds it; `cash` is whether any actually
      moved, and decides whether the ledger ever hears about it.
 
-              hold − (they owe you)      hold + (you owe them)
-     moved    I gave         −₹row        They gave me   +₹row
-     did not  They keep mine  no row      They paid      no row
+              hold − (they owe you)          hold + (you owe them)
+     moved    I gave someone        −₹row    Someone gave me      +₹row
+     did not  Someone has my money  no row   Someone paid for me  no row
+
+     `someone` on the button, never `they`: `they` is the plural and the
+     singular-of-unknown-gender at once and is bad at both, and it is the one
+     word the sentence below already stands a missing name in with. The two
+     buttons under one key open on different words (`I` vs `Someone`) so the
+     eye can tell the cash move from the promise without reading both.
 
      A promise is settled by its opposite, so there is no fifth move: claim
      ₹5,000 then take ₹5,000 and the person nets to zero and leaves People. */
   const MOVES = {
-    give:  { label: 'I gave',         arrow: 'up',   owes: -1, cash: -1 },
-    claim: { label: 'They keep mine', arrow: 'up',   owes: -1, cash:  0 },
-    take:  { label: 'They gave me',   arrow: 'down', owes:  1, cash:  1 },
-    owe:   { label: 'They paid',      arrow: 'down', owes:  1, cash:  0 },
+    give:  { label: 'I gave someone',       arrow: 'up',   owes: -1, cash: -1 },
+    claim: { label: 'Someone has my money', arrow: 'up',   owes: -1, cash:  0 },
+    take:  { label: 'Someone gave me',      arrow: 'down', owes:  1, cash:  1 },
+    owe:   { label: 'Someone paid for me',  arrow: 'down', owes:  1, cash:  0 },
   };
   const MOVES_BY_KEY = { '-': ['give', 'claim'], '+': ['take', 'owe'] };
 
