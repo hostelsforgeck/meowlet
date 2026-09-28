@@ -821,6 +821,127 @@
      shortest chip there could be still costs 76u with its gap. */
   const CHIPS_IN  = ['Salary', 'Work', 'Family', 'Gift', 'Cashback', 'Other'];
   const CHIP_H = 60;          /* 48 chip + the 12 that separates it from the bar */
+
+  /* ---------- the shelf of things you have already typed ----------
+
+     Beat 1 asks for an amount and the strip above the bar is EMPTY while it
+     does: the categories only arrive on the reason beat after it. That is the
+     most valuable 48u in the app, unused at exactly the moment the most
+     predictable entry of the day is being made — the same chai, the same bus,
+     the same figure, forty times a month.
+
+     So beat 1 offers what the ledger has already seen. A chip here answers BOTH
+     beats at once, because the figure and the reason are one object, so it does
+     not fill the field and wait like a category does: it writes the row.
+
+     The unit is a REASON AND A FIGURE TOGETHER. `Tea ₹12` and `Tea ₹20` are two
+     habits and only one of them is the morning one; a chip that averaged them
+     would put a number on the row that was never typed, which is the one thing
+     a shortcut may never do.
+
+     Four numbers, each stopping a different failure:
+
+       WINDOW  how far back a sighting counts at all. Longer, and last winter's
+               office canteen is still on the shelf; shorter, and a weekly habit
+               never gets counted twice.
+       TIMES   the threshold — and it only means anything beside the window. A
+               DAILY habit passes any number inside a week, so this is really the
+               rule for WEEKLY things, and 4 is one month of them.
+       STALE   how long since the last one before the slot is taken back. A daily
+               chai you stopped drinking is not a habit, it is a memory, and it
+               is holding the shelf against whatever replaced it.
+       SLOTS   how many at once. One glance and one tap; past three you are
+               reading a list instead of recognising a shape. */
+  const AGAIN = { window: 45, times: 4, stale: 14, slots: 3 };
+
+  /* The rail the chips have to fit inside: 643 less the bar's 12.5u each side.
+     A chip is 10.8u a character at 18u mono plus 36u of chrome, and 8u of gap
+     stands between two of them — so the shelf can say whether it overflows
+     without waiting to be laid out and measured. */
+  const RAIL = 618, CHIP_GAP = 8;
+  const chipRoom = (label, figure) => (label.length + figure.length) * 10.8 + 36 + CHIP_GAP;
+
+  function recurring(sign) {
+    const today = new Date();
+    const midnight = (back) =>
+      new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
+    const oldest = midnight(AGAIN.window);
+    const freshest = midnight(AGAIN.stale);
+
+    const keys = Object.keys(state.history);
+    const pairs = new Map();
+    let last = null;                  /* the newest row of this sign, for the floor */
+
+    /* Newest day first, and STOP at the window: history is in chronological
+       insertion order — appendOne already relies on that — so three years of
+       ledger costs the last 45 days of it and nothing more. */
+    for (let i = keys.length - 1; i >= 0; i--) {
+      const day = parseKey(keys[i]);
+      if (day < oldest) break;
+      const txns = state.history[keys[i]];
+      const reasons = Object.keys(txns);
+      for (let j = reasons.length - 1; j >= 0; j--) {
+        const flow = txns[reasons[j]][1];
+        if ((flow[0] === '-' ? '-' : '+') !== sign) continue;
+        /* Two entries on one date cannot share a key, so the second chai of the
+           day is stored as `Tea(1)`. Strip that or a daily habit splits into
+           five separate ones and none of them ever reaches the threshold. */
+        const why = reasons[j].replace(/\(\d+\)$/, '').trim();
+        const amount = Math.abs(Number(flow));
+        if (!why || !amount) continue;
+        if (!last) last = { why, amount };
+        const k = why.toLowerCase() + '|' + amount;
+        const seen = pairs.get(k);
+        /* walking backwards means the first sighting IS the most recent one, so
+           `at` needs no comparing and the newest spelling wins by arriving first */
+        if (seen) seen.n++;
+        else pairs.set(k, { why, amount, n: 1, at: day });
+      }
+    }
+
+    const earned = [];
+    for (const e of pairs.values()) if (e.n >= AGAIN.times && e.at >= freshest) earned.push(e);
+    earned.sort((a, b) => b.n - a.n || b.at - a.at);
+
+    const shelf = [];
+    let used = 0;
+    for (const e of earned) {
+      if (shelf.length >= AGAIN.slots) break;
+      const w = chipRoom(e.why, figureOf(sign, e.amount));
+      if (used + w > RAIL + CHIP_GAP) continue;   /* a chip half off the rail is not a chip */
+      used += w;
+      shelf.push(e);
+    }
+
+    /* The floor. Nothing has earned a slot — a ledger a week old, or a life
+       without a pattern — so offer the last entry instead. It counts nothing and
+       proves nothing; it is simply the likeliest repeat on a ledger too young to
+       have a habit, and it costs the shelf nothing once a real one shows up. */
+    if (!shelf.length && last) shelf.push({ why: last.why, amount: last.amount, again: true });
+    return shelf;
+  }
+
+  const figureOf = (sign, amount) => (sign === '-' ? '−' : '+') + '₹' + group(amount);
+
+  function buildRecur(sign) {
+    const shelf = recurring(sign);
+    chipscroll.textContent = '';
+    chipscroll.classList.remove('is-moves');
+    for (const e of shelf) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip is-recur';
+      const fig = document.createElement('span');
+      fig.className = 'chip-net ' + (sign === '-' ? 'is-mine' : 'is-theirs');
+      fig.textContent = figureOf(sign, e.amount);
+      b.append(document.createTextNode(e.again ? 'again · ' + e.why : e.why), fig);
+      b.addEventListener('click', () => pickRecur(e, b));
+      chipscroll.appendChild(b);
+    }
+    chipscroll.scrollLeft = 0;
+    chipEdges();
+    return shelf.length > 0;
+  }
   const isChip = (s) => CHIPS_OUT.indexOf(s) >= 0 || CHIPS_IN.indexOf(s) >= 0;
 
   /* beat 0 at rest · 1 amount · 2 reason · 3 who (g/t only)
@@ -1034,7 +1155,18 @@
     chipscroll.classList.toggle('fade-l', chipscroll.scrollLeft > 2);
     chipscroll.classList.toggle('fade-r', max > 2 && chipscroll.scrollLeft < max - 2);
   }
-  chipscroll.addEventListener('scroll', chipEdges, { passive: true });
+  /* The edge fades are a mask, and a mask makes the CHIP see-through rather
+     than fading it onto anything — with the ledger behind the strip, a day
+     number was showing through a chip's own white fill. So the mask is only
+     on while the strip is actually moving: mid-scroll it dissolves a chip
+     that is half-cut, and the moment it stops the chip is solid again. */
+  let chipStill;
+  chipscroll.addEventListener('scroll', () => {
+    chipscroll.classList.add('is-scrolling');
+    clearTimeout(chipStill);
+    chipStill = setTimeout(() => chipscroll.classList.remove('is-scrolling'), 160);
+    chipEdges();
+  }, { passive: true });
 
   let chipSeq;
   function showChips(on, fade) {
@@ -1069,6 +1201,13 @@
   function syncChips(fade) {
     if (C.beat === 3 && !C.who.trim() && buildPeople()) { showChips(true); return; }
     if (C.beat === 2 && !C.why) { buildChips(); showChips(true); return; }
+    /* Beat 1 now has an offer too, but only while the field is untouched and only
+       for a plain entry: a person move still owes a name, and an edit is pointed
+       at a row that already exists — neither can be answered by one tap. */
+    if (C.beat === 1 && !C.raw && !C.kind && !C.edit && buildRecur(C.sign)) {
+      showChips(true);
+      return;
+    }
     showChips(false, fade);
   }
 
@@ -1118,6 +1257,21 @@
     flyChip(btn);
     paintSay();
     nextBeat();
+  }
+
+  /* A category chip is a first guess and waits for the rest; a recurring chip is
+     the WHOLE entry. Both beats are already answered by the one object, so there
+     is nothing left to ask and nothing to press: it commits. The row is the
+     receipt, and the row is what a tap here produces — got it wrong, and a hold
+     on that row still edits or deletes it, same as any other. */
+  function pickRecur(e, btn) {
+    if (C.beat !== 1 || C.busy || C.raw || C.kind || C.edit) return;
+    C.raw = String(e.amount);
+    C.why = e.why;
+    composeInput.value = C.raw;
+    flyChip(btn);
+    showChips(false, true);
+    commit();
   }
 
   function pickChip(label, btn) {
@@ -1582,7 +1736,10 @@
     /* the number keyboard, straight away — an amount is what this beat is
        for, and on a laptop this simply means the field has the caret */
     openField(sign, '', false, 'numeric', '');
-    showChips(false);
+    /* beat 1 used to have nothing to offer, so this said showChips(false)
+       outright. It has an offer now — the things you repeat — and syncChips
+       still closes the strip when the ledger has none. */
+    syncChips();
     paintKeys();
     draft();
     toBottom();
@@ -1790,6 +1947,9 @@
         if (atEnd) { try { composeInput.setSelectionRange(v.length, v.length); } catch (_) {} }
       }
       C.raw = v;
+      /* the first digit says you are typing your own figure, so the shelf has
+         nothing left to offer — and clearing back to empty brings it back */
+      syncChips(true);
       syncSign();
       catTyped();
     } else if (C.beat === 2) {

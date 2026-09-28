@@ -929,16 +929,24 @@
 
 /* ...and fade whichever edge actually has something past it, so mid-scroll
    a chip dissolves instead of being cut. Both are driven by the scroll
-   position, so at rest on the left the first chip is never faded. */
-.money .chipscroll.fade-r {
+   position, so at rest on the left the first chip is never faded.
+
+   WHILE SCROLLING AND NOT A MOMENT LONGER. A mask does not fade a chip onto
+   the page, it makes the chip itself see-through — and the strip floats over
+   the ledger, so a faded chip had a day number and a figure showing through
+   its own white fill. It read as a broken chip rather than a clipped one.
+   Moving, that is the point and the ledger under it is moving too; at rest
+   the chip is solid and simply ends at the edge, which is what an edge is
+   for. is-scrolling is added on scroll and taken off 160ms after it stops. */
+.money .chipscroll.is-scrolling.fade-r {
   -webkit-mask-image: linear-gradient(90deg, #000 86%, transparent 100%);
           mask-image: linear-gradient(90deg, #000 86%, transparent 100%);
 }
-.money .chipscroll.fade-l {
+.money .chipscroll.is-scrolling.fade-l {
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14%);
           mask-image: linear-gradient(90deg, transparent 0, #000 14%);
 }
-.money .chipscroll.fade-l.fade-r {
+.money .chipscroll.is-scrolling.fade-l.fade-r {
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
           mask-image: linear-gradient(90deg, transparent 0, #000 14%, #000 86%, transparent 100%);
 }
