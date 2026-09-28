@@ -109,8 +109,12 @@ window.Mascot = (function () {
        Degrees, about the foot each ear already pivots on. */
     dozeEar: 4.5,
 
-    /* ---- being poked ---- */
-    wakeMs: 420,
+    /* ---- being poked ----
+       Waking used to be a 420ms rise and nothing else, which made the tap that
+       ended the nap the one tap on him that did not wobble. It is the same
+       gesture, so it gets the same answer: the rise now carries the tap's own
+       damped swing, and 620ms is what that swing needs to settle. */
+    wakeMs: 620,
 
     /* ---- the long press ----
        Hold and he grows until he IS the sheet. Three numbers, and the reason
@@ -471,15 +475,32 @@ window.Mascot = (function () {
 .m-cat.is-doze .m-tilt  { animation: none; transform: rotate(${C.tilt}deg); }
 
 /* springing awake: it starts from the dozed pose, so it only ever plays from
-   there — poking an already-awake cat gets the tap mood instead. */
-.m-cat.is-wake { animation: m-wake ${C.wakeMs}ms var(--ease-spring); }
+   there — poking an already-awake cat gets the tap mood instead.
+
+   And it WOBBLES, on the way up. A poke is a poke whether he was asleep or
+   not, so the swing is the tap's: the same ${C.tapSwing} degrees damped the
+   same way, and the ears, muzzle and eyes ride the tap's own keyframes rather
+   than new ones. The only thing the sleep adds is where it starts from —
+   sunk ${C.dozeSink}u with the eyes shut — and the eyes still pop open, because
+   that is the part that says he woke rather than merely moved. */
+.m-cat.is-wake { animation: m-wake ${C.wakeMs}ms var(--ease-out); }
 @keyframes m-wake {
-  0%   { transform: translateY(${u(C.dozeSink)}) scale(1); }
-  35%  { transform: translateY(${u(-4)}) scale(1.02, 0.98); }
-  65%  { transform: translateY(${u(-1)}) scale(1); }
-  100% { transform: translateY(0) scale(1); }
+  0%   { transform: translateY(${u(C.dozeSink)}) rotate(0deg) scale(1); }
+  20%  { transform: translateY(${u(-C.tapJolt * 2)})
+                    rotate(${-C.tapSwing}deg) scale(1.03, .97); }
+  42%  { transform: translateY(${u(-C.tapJolt * 0.5)})
+                    rotate(${(C.tapSwing * 0.62).toFixed(2)}deg) scale(.99, 1.01); }
+  64%  { transform: translateY(0) rotate(${(-C.tapSwing * 0.34).toFixed(2)}deg) scale(1); }
+  84%  { transform: translateY(0) rotate(${(C.tapSwing * 0.16).toFixed(2)}deg) scale(1); }
+  100% { transform: translateY(0) rotate(0deg) scale(1); }
 }
-.m-cat.is-wake .m-eye { animation: m-pop ${C.wakeMs}ms var(--ease-spring); }
+/* the eyes open faster than the body settles — they are the news */
+.m-cat.is-wake .m-eye { animation: m-pop ${Math.round(C.wakeMs * 0.7)}ms var(--ease-spring); }
+.m-cat.is-wake .m-ear-l,
+.m-cat.is-wake .m-ear-r { animation: m-tap-ears ${C.wakeMs}ms ease-in-out; }
+.m-cat.is-wake .m-ear-r { animation-delay: 32ms; }   /* and not both at once */
+.m-cat.is-wake .m-look  { animation: m-tap-look ${C.wakeMs}ms ease-in-out; }
+.m-cat.is-wake .m-eyes  { animation: m-tap-eyes ${C.wakeMs}ms ease-in-out; }
 @keyframes m-pop {
   0%   { transform: scaleY(.08); }
   45%  { transform: scaleY(1.15); }

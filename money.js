@@ -807,7 +807,19 @@
 
   const CHIPS_OUT = ['Food', 'Travel', 'Groceries', 'Bills', 'Shopping',
                      'Health', 'Fun', 'Rent', 'Gifts', 'Other'];
-  const CHIPS_IN  = ['Salary', 'Refund', 'Gift', 'Sold', 'Other'];
+  /* Money comes in fewer ways than it goes out, so the + list is shorter —
+     but it is not a smaller version of the − list, it is ranked by what
+     actually credits an account: `Work` for the freelance, gig and tip money
+     `Salary` never covered, `Family` for the second-biggest credit most
+     people have. `Refund` and `Sold` left: a refund is a spend reversed and
+     belongs against the reason it came back from, and a thing you sell twice
+     a year does not earn a sixth of the row.
+
+     Six is the CEILING here, not a preference. The row is 618u — 643 less
+     12.5u each side — a chip is 10.8u a character plus 36u of chrome, and
+     the gap is 8u: these six spend 612u. A seventh cannot fit, because the
+     shortest chip there could be still costs 76u with its gap. */
+  const CHIPS_IN  = ['Salary', 'Work', 'Family', 'Gift', 'Cashback', 'Other'];
   const CHIP_H = 60;          /* 48 chip + the 12 that separates it from the bar */
   const isChip = (s) => CHIPS_OUT.indexOf(s) >= 0 || CHIPS_IN.indexOf(s) >= 0;
 
