@@ -549,8 +549,16 @@
 
   function plateSwap(node) {
     for (const old of plateEl.querySelectorAll('.pl-layer:not(.out)')) {
-      if (reduced) old.remove();
-      else { old.classList.add('out'); setTimeout(() => old.remove(), 420); }
+      if (reduced) { old.remove(); continue; }
+      /* The plate is usually changing WIDTH at this exact moment — a key
+         collapses into the go key as an entry opens — and a layer pinned to
+         inset:0 keeps re-centring its own text for every frame of that resize.
+         The figure that is on its way out has no business moving at all, so
+         its box is frozen at the size it is leaving from. */
+      const box = old.offsetWidth;
+      if (box) { old.style.width = box + 'px'; old.style.right = 'auto'; }
+      old.classList.add('out');
+      setTimeout(() => old.remove(), 420);
     }
     const layer = document.createElement('span');
     layer.className = 'pl-layer' + (reduced ? '' : ' in');

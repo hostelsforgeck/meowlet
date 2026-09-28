@@ -253,8 +253,15 @@
 }
 .money .pl-layer.in  { animation: layer-in  .4s var(--ease-out); }
 .money .pl-layer.out { animation: layer-out .4s var(--ease-out) forwards; }
-@keyframes layer-in  { from { opacity: 0; transform: translateY(58%); } to { opacity: 1; transform: none; } }
-@keyframes layer-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-58%); } }
+/* A CROSSFADE, not a conveyor. The old layer used to rise out of the plate as
+   the new one rose in, and at the one moment that swap matters most — tapping
+   − or + — the plate is also WIDENING, because a key is collapsing into the go
+   key beside it. A centred layer that still spans the plate re-centres its own
+   text on every frame of that resize, so the balance slid sideways AND lifted
+   on its way out: two motions nobody asked for, on the app's most-tapped
+   gesture. Neither reads as information. They now simply trade places. */
+@keyframes layer-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes layer-out { from { opacity: 1; } to { opacity: 0; } }
 
 .money .pl-greet { font-size: calc(25 * var(--u)); font-weight: 500; }
 .money .pl-msg   { font-size: calc(20 * var(--u)); font-weight: 400; color: #d8d8d8; }
