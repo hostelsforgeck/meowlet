@@ -1452,6 +1452,53 @@
     }
   }
 
+  /* ---------- the row comes to the plate ----------
+
+     Hold a row and the keyboard takes half the screen. The bar rides up on top
+     of it, and the row you are holding is very often under one or the other —
+     so the figure being changed is being changed blind.
+
+     Nothing is drawn for that. The row is already on the screen; it is only in
+     the wrong place. So the LEDGER moves instead, until the row sits one gap
+     above the bar and the screen reads row · plate · keyboard.
+
+     The scroller does the rest of the thinking. A ledger too short to bring the
+     row down there simply cannot scroll that far, so nothing moves and the row
+     stays where it already was, in plain sight. That is the whole of "only when
+     the ledger reaches the bottom", and it costs no test of its own. */
+
+  const EDIT_GAP = 12;                      /* u between the row and the bar */
+
+  function parkEdit() {
+    if (!editRow || !editRow.parentNode) return;
+    const u = Math.min(1, window.innerWidth / 643);    /* the CSS --u, in script */
+    const want = toolbar.getBoundingClientRect().top - EDIT_GAP * u;
+    const delta = editRow.getBoundingClientRect().bottom - want;
+    if (Math.abs(delta) < 1) return;        /* already there; a scroll would be a twitch */
+    scroller.scrollTo({ top: scroller.scrollTop + delta, behavior });
+  }
+
+  /* ...once the keyboard has finished arriving, and never during it: a scroll
+     measured against a viewport that is still shrinking lands short.
+
+     The app carries a height transition ONLY while it is riding a keyboard —
+     that is what is-riding exists for — so transitionend on height is the
+     keyboard saying it has landed, rather than a URL bar moving the floor.
+     Where no ride happens at all (reduced motion, or a field that was already
+     open) the timer says the same thing a little later. */
+  function afterRide(then) {
+    let done = false;
+    const fire = () => {
+      if (done) return;
+      done = true;
+      appEl.removeEventListener('transitionend', on);
+      then();
+    };
+    const on = (e) => { if (e.propertyName === 'height') fire(); };
+    appEl.addEventListener('transitionend', on);
+    setTimeout(fire, 360);
+  }
+
   function startEdit(key, reason) {
     const day = state.history[key];
     const t = day && day[reason];
@@ -1478,6 +1525,7 @@
       if (C.sign === '+') editRow.classList.add('is-up');
     }
     paintEdit();
+    afterRide(parkEdit);
     if (window.Mascot) window.Mascot.wake();
   }
 
@@ -1758,6 +1806,10 @@
     paintKeys();
     paintSay();
     draft();
+    /* the reason beat opens the row taller than it was, and the shelf above the
+       bar takes a slot with it — so the place the row belongs has moved, and
+       the keyboard is already up to measure against */
+    if (C.edit) parkEdit();
   }
 
   function nextBeat() {
