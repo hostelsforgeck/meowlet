@@ -692,7 +692,7 @@
 /* ---------- the mark is the switch ----------
 
    An entry picks its direction with the key it is opened by. An edit is not
-   opened by a key -- it is opened by the row -- so it had no way to say that
+   opened by a key — it is opened by the row — so it had no way to say that
    a spend was really money in. The mark already on the plate says which way
    this figure points, at the size it lands in the row, so it is the thing to
    tap. Nothing new is drawn but a box around a character that was already

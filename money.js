@@ -1387,8 +1387,8 @@
   }
 
   /* The mark is a switch for exactly one condition: a row being edited, on the
-     beat that holds its figure. Every other beat has no sign to change -- a
-     reason and a name do not point anywhere -- and an entry already chose its
+     beat that holds its figure. Every other beat has no sign to change — a
+     reason and a name do not point anywhere — and an entry already chose its
      direction with the key that opened it. Offered anywhere else it would be a
      box drawn around a character for no reason. */
   function paintFlip() {
@@ -1396,7 +1396,7 @@
   }
 
   /* Tapping it rewrites the figure in place: the mark, the row it is rehearsing
-     and that row's own skin. Nothing is saved -- the tick is still what saves --
+     and that row's own skin. Nothing is saved — the tick is still what saves —
      so a wrong tap costs one more tap, the same as a wrong digit. */
   function flipSign() {
     if (C.busy || !C.edit || C.beat !== 1) return;
