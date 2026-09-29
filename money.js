@@ -2511,7 +2511,13 @@ You
 
   let holding = false;
 
-  plateEl.addEventListener('pointerdown', () => {
+  /* On the WRAP, not on the plate button. The plate cannot hold the field —
+     it is a button — so the field is a SIBLING lying over it, and mid-entry
+     every touch on that box hits the input instead. Bound to the button, this
+     handler simply never ran while composing: the one gesture it exists for,
+     touching a cat asleep on the field, was the one it could not see. The wrap
+     is both of them, and its box is the plate's exactly. */
+  plateWrap.addEventListener('pointerdown', () => {
     if (C.beat !== 0 || C.busy) {
       /* Mid-entry the plate is a FIELD: this touch belongs to the caret, and
          nothing here may take it. But a cat asleep on that field is still a cat
@@ -2544,11 +2550,14 @@ You
 
   /* Anywhere else in the app counts as being here: pressing a key, opening a
      sheet, scrolling the ledger. He only nods off when nothing at all is
-     happening, which is the whole point of the behaviour. The plate is excluded
-     because its own tap goes through poke(), and a silent wake first would rob
-     him of the spring. */
+     happening, which is the whole point of the behaviour. The plate's whole box
+     is excluded — button and the field over it — because a touch there goes
+     through poke() or rouse(), and a silent wake first would rob him of the
+     spring. Excluding only the button left the field to this handler, which
+     un-dozed him without a sound and then had nothing left for rouse() to
+     play: tapping the amount to start typing was the tap he never answered. */
   document.addEventListener('pointerdown', (e) => {
-    if (window.Mascot && !plateEl.contains(e.target)) window.Mascot.wake();
+    if (window.Mascot && !plateWrap.contains(e.target)) window.Mascot.wake();
   }, { passive: true });
   scroller.addEventListener('scroll', () => {
     disarmRow();
