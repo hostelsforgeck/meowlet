@@ -1387,6 +1387,7 @@
 
   function openField(sign, value, word, mode, hint) {
     clearTimeout(plateSeq);          /* no parked rest() may steal the field */
+    slipHome();                      /* the bar is the field now, so it stands */
     plateSwap(fieldLabel(sign));
     composeInput.hidden = false;
     composeInput.classList.toggle('is-word', !!word);
@@ -1718,6 +1719,7 @@
   /* ---------- the keys ---------- */
 
   function paintKeys() {
+    slipHome();                      /* a bar whose keys changed belongs on screen */
     if (C.beat === 0) {
       btnIn.className = 'key k-in';
       btnOut.className = 'key k-out';
@@ -2661,18 +2663,26 @@ You
     document.body.style.setProperty('--slip', px + 'px');
   }
 
+  /* ...and it comes home without waiting for a scroll.
+
+     Every guard below only ever ran on a scroll event, and a compose, an edit
+     and a delete all arrive without one. So a bar slipped away for the long
+     read was still slipped away when the keyboard came up under it, and the
+     plate went with it — the one failure this bar exists to prevent.
+
+     paintKeys is where every state those guards name lands, and openField is
+     the door the keyboard comes through. Home is called from both, so the bar
+     is already back before the keyboard has anywhere to bury it. */
+  function slipHome() { slipSince = 0; slipTo(0); }
+
   function slipRead() {
     slipQueued = false;
     const y = scroller.scrollTop;
     const d = y - slipLast;
     slipLast = y;
 
-    if (C.beat !== 0 || C.busy || undoSnap) { slipSince = 0; slipTo(0); return; }
-    if (y >= scroller.scrollHeight - scroller.clientHeight - SLIP_FLOOR) {
-      slipSince = 0;
-      slipTo(0);
-      return;
-    }
+    if (C.beat !== 0 || C.busy || undoSnap) { slipHome(); return; }
+    if (y >= scroller.scrollHeight - scroller.clientHeight - SLIP_FLOOR) { slipHome(); return; }
 
     if (Math.abs(d) < SLIP_DEAD) return;
     slipSince = (slipSince > 0) === (d > 0) ? slipSince + d : d;
