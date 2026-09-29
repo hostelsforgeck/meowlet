@@ -1055,6 +1055,12 @@
   height: auto;
   min-height: calc(var(--row-h) * var(--u));
   padding-block: calc(5 * var(--u));
+  /* ...and when it is scrolled to the plate, it stops where the LAST row of a
+     ledger stops: the same room the scroller already keeps at its foot. Park it
+     any closer and the card's bottom edge comes up against the bar as a white
+     band that is in no other state of the app. */
+  scroll-margin-bottom: calc((106 + var(--chips)) * var(--u)
+                             + env(safe-area-inset-bottom, 0px));
 }
 .money .row.is-draft .c-reason > span {
   white-space: normal;

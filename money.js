@@ -1462,20 +1462,20 @@
      the wrong place. So the LEDGER moves instead, until the row sits one gap
      above the bar and the screen reads row · plate · keyboard.
 
+     Where it stops is CSS's business, not this function's: scroll-margin-bottom
+     on the draft row is the room to leave, and it is the scroller's own foot
+     padding, so a row brought to the plate rests exactly where the ledger's
+     last row rests. Measuring a gap here instead put the card's bottom edge
+     hard against the bar, in a place the app is in no other state.
+
      The scroller does the rest of the thinking. A ledger too short to bring the
      row down there simply cannot scroll that far, so nothing moves and the row
      stays where it already was, in plain sight. That is the whole of "only when
      the ledger reaches the bottom", and it costs no test of its own. */
 
-  const EDIT_GAP = 12;                      /* u between the row and the bar */
-
   function parkEdit() {
     if (!editRow || !editRow.parentNode) return;
-    const u = Math.min(1, window.innerWidth / 643);    /* the CSS --u, in script */
-    const want = toolbar.getBoundingClientRect().top - EDIT_GAP * u;
-    const delta = editRow.getBoundingClientRect().bottom - want;
-    if (Math.abs(delta) < 1) return;        /* already there; a scroll would be a twitch */
-    scroller.scrollTo({ top: scroller.scrollTop + delta, behavior });
+    editRow.scrollIntoView({ block: 'end', behavior });
   }
 
   /* ...once the keyboard has finished arriving, and never during it: a scroll
@@ -1806,10 +1806,12 @@
     paintKeys();
     paintSay();
     draft();
-    /* the reason beat opens the row taller than it was, and the shelf above the
-       bar takes a slot with it — so the place the row belongs has moved, and
-       the keyboard is already up to measure against */
-    if (C.edit) parkEdit();
+    /* The reason beat opens the row taller and the shelf above the bar may take
+       a slot with it, so the place the row belongs has moved. It waits like the
+       first park does: a numeric pad and a text keyboard are not the same
+       height, and parking before that swap lands is what put the row back
+       under the keyboard the moment you asked for the reason. */
+    if (C.edit) afterRide(parkEdit);
   }
 
   function nextBeat() {
