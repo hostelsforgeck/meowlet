@@ -1423,6 +1423,7 @@
      adds is a use for a key that was already empty. */
 
   let editRow = null;                    /* the row, in the ledger, being edited */
+  let editH = 0;                         /* ...and how tall it was when it last parked */
 
   function findRow(key, reason) {
     for (const row of card.querySelectorAll('.row'))
@@ -1450,6 +1451,19 @@
       r.className = 'cell c-reason' + (C.beat === 2 ? ' is-live' : '');
       if (r.firstChild) r.firstChild.textContent = C.why;
     }
+
+    /* A reason longer than its track opens the row DOWNWARD — is-draft is the
+       one row in the ledger with no fixed height — so a row that grew after it
+       parked grew straight back under the bar. Park it again on the keystroke
+       that wrapped the line, and only on that one: every other keystroke has to
+       leave the ledger exactly where it is.
+
+       editH is 0 until the first park has landed, which keeps this from firing
+       against a viewport the keyboard has not finished shrinking yet. */
+    if (editH && editRow.offsetHeight !== editH) {
+      editH = editRow.offsetHeight;
+      parkEdit();
+    }
   }
 
   /* ---------- the row comes to the plate ----------
@@ -1476,6 +1490,7 @@
   function parkEdit() {
     if (!editRow || !editRow.parentNode) return;
     editRow.scrollIntoView({ block: 'end', behavior });
+    editH = editRow.offsetHeight;    /* the height this parking was true for */
   }
 
   /* ...once the keyboard has finished arriving, and never during it: a scroll
@@ -1520,6 +1535,7 @@
        and the growing is the whole point: it is what says THIS row is the
        one you are holding. Nothing else on screen changed anyway. */
     editRow = findRow(key, reason);
+    editH = 0;                       /* nothing has parked yet, so nothing may re-park */
     if (editRow) {
       editRow.classList.add('is-draft');
       if (C.sign === '+') editRow.classList.add('is-up');
