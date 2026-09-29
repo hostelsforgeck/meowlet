@@ -1077,7 +1077,34 @@
 .money .row.is-draft .cell.is-live { opacity: 1; }
 .money .row.is-draft .c-bal { color: #cfcfcf; }
 
+/* ---------- the bar gets out of the way ----------
+
+   Read back into the ledger and the bar leaves with it; come back toward today
+   and it returns. Not the feed's habit, which hides the chrome as you scroll
+   DOWN — a feed runs newest-first, so down is the archive. This ledger runs the
+   other way: oldest at the top, newest at the foot, resting at the foot. So
+   scrolling down is coming home and scrolling UP is the long read, and it is
+   the long read that should cost the bar.
+
+   --slip is the one number, and it has to be a registered property or it
+   cannot be transitioned: an unregistered custom property is a string the
+   browser pastes into other values, so the bar would jump rather than travel.
+   One transition on one variable, and everything hung off it moves together. */
+
+@property --slip {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+body.money {
+  --slip: 0px;
+  transition: --slip .26s var(--ease-out);
+}
+.money .toolbar { transform: translateY(var(--slip)); }
+
 @media (prefers-reduced-motion: reduce) {
+  body.money { transition: none; }
   .money .app, .money .app.is-riding,
   .money .toolbar, .money .chiprow, .money .scroller { transition: none; }
 }

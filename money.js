@@ -2629,9 +2629,62 @@ You
   document.addEventListener('pointerdown', (e) => {
     if (window.Mascot && !plateWrap.contains(e.target)) window.Mascot.wake();
   }, { passive: true });
+  /* ---------- the bar gets out of the way ----------
+
+     Reading back through the ledger is the one thing you do here that wants
+     the whole screen, and it is the one thing the bar is in the way of. So it
+     leaves on the way back and returns on the way home.
+
+     Four rules, and they are most of what keeps it from feeling broken:
+
+       DEAD    a thumb resting on the glass is not a scroll
+       COMMIT  a direction has to be MEANT. the count restarts on every flip,
+               which is what stops a jittery finger flickering the bar
+       FLOOR   at the foot it is always out: that is where the newest row is,
+               where a commit lands, and where the plate belongs
+       and it comes back on the first stroke the other way, because getting it
+       back has to be cheaper than losing it.
+
+     It never moves mid-entry — the bar IS the field then — and never while an
+     undo is on offer, because the plate is the only way back from a delete and
+     scrolling it off the screen would take that with it. */
+
+  const SLIP_DEAD = 4, SLIP_COMMIT = 14, SLIP_FLOOR = 10, SLIP_BY = 112;
+  const slipGone = () => SLIP_BY * Math.min(1, window.innerWidth / 643);
+
+  let slipPx = 0, slipSince = 0, slipLast = scroller.scrollTop, slipQueued = false;
+
+  function slipTo(px) {
+    px = Math.max(0, Math.min(slipGone(), px));
+    if (px === slipPx) return;
+    slipPx = px;
+    document.body.style.setProperty('--slip', px + 'px');
+  }
+
+  function slipRead() {
+    slipQueued = false;
+    const y = scroller.scrollTop;
+    const d = y - slipLast;
+    slipLast = y;
+
+    if (C.beat !== 0 || C.busy || undoSnap) { slipSince = 0; slipTo(0); return; }
+    if (y >= scroller.scrollHeight - scroller.clientHeight - SLIP_FLOOR) {
+      slipSince = 0;
+      slipTo(0);
+      return;
+    }
+
+    if (Math.abs(d) < SLIP_DEAD) return;
+    slipSince = (slipSince > 0) === (d > 0) ? slipSince + d : d;
+    if (Math.abs(slipSince) < SLIP_COMMIT) return;
+    slipSince = 0;
+    slipTo(d < 0 ? slipGone() : 0);   /* up is the long read, and it costs the bar */
+  }
+
   scroller.addEventListener('scroll', () => {
     disarmRow();
     if (window.Mascot) window.Mascot.wake();
+    if (!slipQueued) { slipQueued = true; requestAnimationFrame(slipRead); }
   }, { passive: true });
 
   document.addEventListener('keydown', (e) => {
