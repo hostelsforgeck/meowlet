@@ -689,6 +689,55 @@
 /* the unit recedes: every figure here is rupees, so it is the quietest part */
 .money .pl-cur { color: #6e6e6e; }
 
+/* ---------- the mark is the switch ----------
+
+   An entry picks its direction with the key it is opened by. An edit is not
+   opened by a key -- it is opened by the row -- so it had no way to say that
+   a spend was really money in. The mark already on the plate says which way
+   this figure points, at the size it lands in the row, so it is the thing to
+   tap. Nothing new is drawn but a box around a character that was already
+   there, and it is drawn only while it means something.
+
+   It is a sibling of the input, not a child of the plate: the plate is opaque
+   and the digits belong to the input, so a plate raised over the field would
+   paint the figure out. Standing beside it at z-index 3 costs the input one
+   character of its own width and nothing else.
+
+   The 79 is the cat's gutter, the same constant .pl-input clears; 2ch at the
+   prefix's own size IS the prefix, because the face is a monospace. */
+.money .pl-flip {
+  all: unset;
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: calc(75 * var(--u));
+  width: calc(2ch + 8 * var(--u));
+  font-size: calc(30 * var(--u));
+  display: none;
+  align-items: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.money .plate-wrap.can-flip .pl-flip { display: flex; }
+
+/* the box, at the mark's height rather than the plate's, so the target is a
+   thumb and the drawing is a character */
+.money .pl-flip::before {
+  content: '';
+  position: absolute;
+  inset: calc(16 * var(--u)) 0;
+  border: calc(2 * var(--u)) solid rgba(255, 255, 255, .28);
+  border-radius: calc(11 * var(--u));
+  transition: background-color .16s var(--ease-out),
+              border-color .16s var(--ease-out);
+}
+.money .pl-flip:active::before {
+  background: rgba(255, 255, 255, .14);
+  border-color: rgba(255, 255, 255, .5);
+}
+.money .pl-flip:focus-visible::before { border-color: var(--accent); }
+
 /* The real input, over the plate. A real input because the OS keyboard
    is the only correct keyboard: it is the one the person has set up,
    in their language, with their autocorrect and their swipe. */

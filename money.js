@@ -784,6 +784,7 @@
   const chipscroll = document.getElementById('chipscroll');
   const composeInput = document.getElementById('composeInput');
   const plateWrap = document.getElementById('plateWrap');
+  const flipBtn = document.getElementById('flipSign');
 
   /* Categories, not past reasons: a fixed vocabulary keeps every chip in the
      same slot forever, and a chip that never moves stops having to be read.
@@ -1385,6 +1386,31 @@
     if (el.getAttribute(name) !== value) el.setAttribute(name, value);
   }
 
+  /* The mark is a switch for exactly one condition: a row being edited, on the
+     beat that holds its figure. Every other beat has no sign to change -- a
+     reason and a name do not point anywhere -- and an entry already chose its
+     direction with the key that opened it. Offered anywhere else it would be a
+     box drawn around a character for no reason. */
+  function paintFlip() {
+    plateWrap.classList.toggle('can-flip', !!C.edit && C.beat === 1 && !C.busy);
+  }
+
+  /* Tapping it rewrites the figure in place: the mark, the row it is rehearsing
+     and that row's own skin. Nothing is saved -- the tick is still what saves --
+     so a wrong tap costs one more tap, the same as a wrong digit. */
+  function flipSign() {
+    if (C.busy || !C.edit || C.beat !== 1) return;
+    C.sign = C.sign === '-' ? '+' : '-';
+    const m = plateEl.querySelector('.pl-layer:not(.out) .pl-sign');
+    if (m) {
+      m.textContent = C.sign === '-' ? '\u2212' : '+';
+      m.classList.toggle('is-out', C.sign === '-');
+    }
+    if (editRow) editRow.classList.toggle('is-up', C.sign === '+');
+    paintEdit();
+    if (window.Mascot) window.Mascot.wake();
+  }
+
   function openField(sign, value, word, mode, hint) {
     clearTimeout(plateSeq);          /* no parked rest() may steal the field */
     slipHome();                      /* the bar is the field now, so it stands */
@@ -1396,6 +1422,7 @@
     composeInput.placeholder = hint || '';
     composeInput.value = value || '';
     setAttr(composeInput, 'inputmode', mode);
+    paintFlip();
     ride();
     focusField();
     /* Any other beat puts him back to idle; coming BACK to beat 1 with an
@@ -1405,6 +1432,7 @@
 
   function closeField() {
     ride();
+    plateWrap.classList.remove('can-flip');
     refocus = false;
     composeInput.hidden = true;
     composeInput.value = '';
@@ -1439,7 +1467,9 @@
     if (!C.edit) return;
     if (!editRow || !editRow.parentNode) editRow = findRow(C.edit.key, C.edit.reason);
     if (!editRow) return;
-    const up = C.edit.flow[0] !== '-';
+    /* the direction the FIELD is holding, not the one the row was saved with:
+       the mark on the plate can change it, and the row is the rehearsal */
+    const up = C.sign !== '-';
     const text = flowText((up ? '+' : '-') + (C.raw || '0'));
     const f = editRow.querySelector('.c-flow');
     const r = editRow.querySelector('.c-reason');
@@ -2417,6 +2447,8 @@ You
     if (swallowTap(btnOut)) return;
     if (C.beat === 0) startCompose('-'); else nextBeat();
   });
+  flipBtn.addEventListener('click', flipSign);
+
   btnIn.addEventListener('click', () => {
     if (swallowTap(btnIn)) return;
     if (C.beat === 0) startCompose('+');
