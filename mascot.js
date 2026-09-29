@@ -771,22 +771,30 @@ window.Mascot = (function () {
    inline transform loses to a running animation every time. So every rule
    here first stops the part it poses. That also means the pose has to yield
    to sleep, or a dozing cat wears a wide-awake face under his own z's —
-   hence :not(.is-doze) on every one of them. */
+   hence :not(.is-doze) on every one of them.
 
-.m-cat.is-brace:not(.is-doze) .m-ear-l,
-.m-cat.is-brace:not(.is-doze) .m-ear-r {
+   And it has to yield to the WAKE for the same reason in reverse. m-wake is a
+   root animation, so the 'animation: none !important' here erased the whole
+   wobble whenever the keystroke that woke him also posed him:
+   the amount beat calls rouse() and then type() in the same frame, so beat 1
+   was the one beat where waking up looked like nothing happening. For those
+   ${C.wakeMs}ms he is not posing, he is waking — :not(.is-wake), and the pose
+   lands when he has finished. */
+
+.m-cat.is-brace:not(.is-doze):not(.is-wake) .m-ear-l,
+.m-cat.is-brace:not(.is-doze):not(.is-wake) .m-ear-r {
   animation: none !important;
   transition: transform .18s var(--ease-out);
   transform: rotate(calc(var(--tense, 0) * ${-C.braceEar}deg))
              scaleY(calc(1 - var(--tense, 0) * .24));
 }
-.m-cat.is-brace:not(.is-doze) .m-eye {
+.m-cat.is-brace:not(.is-doze):not(.is-wake) .m-eye {
   animation: none !important;
   transition: transform .18s var(--ease-out);
   transform: scaleY(calc(1 + var(--tense, 0) * ${C.braceEye}))
              scaleX(calc(1 + var(--tense, 0) * ${(C.braceEye * 0.6).toFixed(3)}));
 }
-.m-cat.is-brace:not(.is-doze) {
+.m-cat.is-brace:not(.is-doze):not(.is-wake) {
   animation: none !important;
   transition: transform .18s var(--ease-out);
   transform: translateY(calc(var(--tense, 0) * ${C.braceSink}px));
@@ -880,8 +888,12 @@ window.Mascot = (function () {
 
 /* the hop · one as each digit lands. An animation beats a transform outright,
    so a hop that only knew about Y would drop him back to centre mid-jump and
-   snap him forward again when it ended. Every frame carries the step. */
-.m-cat.is-hop:not(.is-doze) { animation: m-hop ${C.hopMs}ms var(--ease-spring) !important; }
+   snap him forward again when it ended. Every frame carries the step.
+
+   It steps aside for the wake too: a digit that lands on a sleeping cat gets
+   the wobble, not a hop on top of it. The stars still pop — is-pop is on the
+   sparks, not on him. */
+.m-cat.is-hop:not(.is-doze):not(.is-wake) { animation: m-hop ${C.hopMs}ms var(--ease-spring) !important; }
 @keyframes m-hop {
   0%   { transform: translate(var(--leanX, 0px), var(--leanY, 0px)) scale(1, 1); }
   30%  { transform: translate(var(--leanX, 0px), calc(var(--leanY, 0px) - ${C.hopBy}px)) scale(.97, 1.04); }
