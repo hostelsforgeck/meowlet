@@ -123,11 +123,14 @@
   inset: 0;
   background: var(--accent);
   pointer-events: none;
-  animation: row-flash 1.5s var(--ease-out) forwards;
+  /* linear, not ease-out: ease-out spends four fifths of the fade in its
+     first third, which is a blink off rather than a drain. There is no
+     arrival to ease here — the value only has to leave, evenly. */
+  animation: row-flash 1.5s linear forwards;
 }
-/* Money in flashes green. The LIFT green, not the ink one: this is a wash at
-   half opacity, and #23966a is darker than the red so it would land heavier
-   than an out-flash for the same number. */
+/* Money in flashes green. The LIFT green, not the ink one: #23966a is darker
+   than the red, so it would land heavier than an out-flash for the same
+   number even at this weight. */
 .money .row.is-new.is-up::after { background: var(--in-lift); }
 
 /* ---------- how the direction is shown ----------
@@ -158,10 +161,19 @@
 .money.flow-minus .c-flow.is-in { color: var(--ink); }
 .money.flow-minus .row.is-new.is-up::after { background: var(--ink); }
 .money.flow-minus .row.is-draft.is-up { background: #f4f4f4; }
+/* The receipt is a FADE, not a flash. At half opacity the wash came in four
+   times heavier than the draft tint the row was already wearing, so committing
+   stepped the row DARKER before it cleared — light green, dark green, white,
+   which reads as a glitch rather than as a thing landing.
+
+   .08 is the draft's own weight. The row keeps exactly the tint it had while
+   you were typing and that tint drains away: nothing steps, nothing flashes,
+   and the row ends where every other row already is. It holds briefly first,
+   so the fade is something you watch finish rather than something already
+   half gone by the time you look. */
 @keyframes row-flash {
-  0%   { opacity: .5; }
-  16%  { opacity: .2; }
-  100% { opacity: 0; }
+  0%, 20% { opacity: .08; }
+  100%    { opacity: 0; }
 }
 
 /* ---------- hold a row to fix it ----------

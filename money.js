@@ -1483,18 +1483,7 @@
       if (r.firstChild) r.firstChild.textContent = C.why;
     }
 
-    /* A reason longer than its track opens the row DOWNWARD — is-draft is the
-       one row in the ledger with no fixed height — so a row that grew after it
-       parked grew straight back under the bar. Park it again on the keystroke
-       that wrapped the line, and only on that one: every other keystroke has to
-       leave the ledger exactly where it is.
-
-       editH is 0 until the first park has landed, which keeps this from firing
-       against a viewport the keyboard has not finished shrinking yet. */
-    if (editH && editRow.offsetHeight !== editH) {
-      editH = editRow.offsetHeight;
-      parkEdit();
-    }
+    reparkIfGrew(editRow);
   }
 
   /* ---------- the row comes to the plate ----------
@@ -1518,10 +1507,30 @@
      stays where it already was, in plain sight. That is the whole of "only when
      the ledger reaches the bottom", and it costs no test of its own. */
 
-  function parkEdit() {
-    if (!editRow || !editRow.parentNode) return;
-    editRow.scrollIntoView({ block: 'end', behavior });
-    editH = editRow.offsetHeight;    /* the height this parking was true for */
+  function park() {
+    /* an edit holds a row that already exists; a new entry holds the draft
+       it is rehearsing. Both are THE row you are working on, and both want
+       the same place on the screen, so there is one function for it. */
+    const row = editRow || draftRow;
+    /* a promise rehearses no row at all — nothing moved, so there is nothing
+       to bring up, and the ledger simply keeps its foot in view */
+    if (!row || !row.parentNode) { if (!C.edit) toBottom(); return; }
+    row.scrollIntoView({ block: 'end', behavior });
+    editH = row.offsetHeight;        /* the height this parking was true for */
+  }
+
+  /* A row travels between one line and however many the reason needs, and
+     is-draft is the one row in the ledger with no fixed height — so a row
+     that grew after it parked grew straight back under the bar. Park it again
+     on the keystroke that wrapped the line, and only on that one: every other
+     keystroke has to leave the ledger exactly where it is.
+
+     editH is 0 until the first park has landed, which keeps this from firing
+     against a viewport the keyboard has not finished shrinking yet. */
+  function reparkIfGrew(row) {
+    if (!editH || !row || row.offsetHeight === editH) return;
+    editH = row.offsetHeight;
+    park();
   }
 
   /* ...once the keyboard has finished arriving, and never during it: a scroll
@@ -1572,7 +1581,7 @@
       if (C.sign === '+') editRow.classList.add('is-up');
     }
     paintEdit();
-    afterRide(parkEdit);
+    afterRide(park);
     if (window.Mascot) window.Mascot.wake();
   }
 
@@ -1744,6 +1753,9 @@
     card.hidden = false;
     card.appendChild(row);
     blankNote.hidden = true;
+    /* the draft wraps its reason too, and it is rebuilt rather than grown,
+       so the measurement has to happen here rather than in paintEdit */
+    reparkIfGrew(row);
   }
 
   /* ---------- the keys ---------- */
@@ -1829,6 +1841,7 @@
     C.why = '';
     C.who = '';
     C.when = new Date();
+    editH = 0;                       /* nothing has parked yet, so nothing may re-park */
     /* the number keyboard, straight away — an amount is what this beat is
        for, and on a laptop this simply means the field has the caret */
     openField(sign, '', false, 'numeric', '');
@@ -1838,7 +1851,7 @@
     syncChips();
     paintKeys();
     draft();
-    toBottom();
+    afterRide(park);
     if (window.Mascot) window.Mascot.wake();
   }
 
@@ -1859,7 +1872,12 @@
        first park does: a numeric pad and a text keyboard are not the same
        height, and parking before that swap lands is what put the row back
        under the keyboard the moment you asked for the reason. */
-    if (C.edit) afterRide(parkEdit);
+    /* ...and a new entry wants it just as much: the strip opening above the
+       bar and a numeric pad swapping for a text one both move the floor the
+       row is standing on, so the row has to be brought up AFTER they land,
+       not before. Parking on the way in is what made the amount you had just
+       typed sit behind the chips. */
+    afterRide(park);
   }
 
   function nextBeat() {
@@ -1878,9 +1896,6 @@
     const i = stepOf() + 1;
     if (i >= C.seq.length) { commit(); return; }
     enter(C.seq[i]);
-    /* an edit is already on screen where it lives; dragging the ledger to
-       the bottom would take the row you are working on off it */
-    if (!C.edit) toBottom();
   }
 
   function backBeat() {
