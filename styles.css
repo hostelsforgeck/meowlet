@@ -158,13 +158,6 @@ body {
   color: #fff;
 }
 
-@keyframes today-pulse {
-  0%   { transform: scale(1); }
-  38%  { transform: scale(1.14); }
-  100% { transform: scale(1); }
-}
-.row.is-today .daynum.pulse { animation: today-pulse .46s var(--ease-spring); }
-
 /* days that have not happened yet */
 .row.is-future { color: var(--ink-off); }
 .row.is-future .c-weekday,
@@ -201,12 +194,6 @@ body {
    not by a full monospace space. */
 .glyph.split { display: flex; align-items: baseline; }
 .glyph.split .unit { margin-left: calc(4.7 * var(--u)); }
-
-@keyframes glyph-in {
-  from { transform: scale(.45); opacity: 0; }
-  to   { transform: scale(1);   opacity: 1; }
-}
-.glyph.bump { animation: glyph-in .28s var(--ease-spring); }
 
 /* ---------- bottom bar ---------- */
 

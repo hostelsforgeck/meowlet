@@ -38,6 +38,12 @@ window.Months = (function () {
        where you are */
     restMs: 1000,
 
+    /* ...and how long at the live end. Today is the answer rather than a
+       position, so it is worth reading for longer than a month you are
+       merely passing — but it GOES. Standing there for the rest of the
+       session made it furniture, and furniture is not read. */
+    todayMs: 10000,
+
     rollMs: 340,      /* one digit's slide */
     stagger: 22,      /* ...and the gap between them, right to left */
     easeMs: 240,      /* the box growing or shrinking to its new figures */
@@ -45,6 +51,12 @@ window.Months = (function () {
 
   const SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
                  'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+  /* the live end: the bottom of the ledger, where the day you are looking at
+     is today. Eight px of slack, because a scroller rarely lands on a round
+     number and a pixel short of the end is still the end. */
+  const atEnd = () =>
+    scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 8;
 
   const rupees = (n) => '₹' + Math.abs(n).toLocaleString('en-IN');
   const inTx = (n) => '+' + rupees(n);
@@ -150,6 +162,7 @@ window.Months = (function () {
      must survive the next render */
   const defaulted = new Set();
   let fast = false, lastTop = 0, lastAt = 0, settleSeq = null, restSeq = null;
+  let stirred = false;                 /* has anyone actually touched this yet */
 
   const mmOf = (d) => String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getFullYear() % 100);
   const dayOf = (d) => d.getDate() + ' ' + SHORT[d.getMonth()];
@@ -266,7 +279,6 @@ window.Months = (function () {
     if (!hit) hit = rows[rows.length - 1];
     pill.classList.remove('is-hidden');
 
-    const atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 8;
     const key = dayOf(new Date());
     const M = months.find((x) => x.mm === hit.dataset.mm);
     const todayIn = months.find((x) => x.days[key]);
@@ -276,7 +288,7 @@ window.Months = (function () {
       if (owner) return show(picked, owner.days[picked]);
       picked = null;
     }
-    if (atEnd && todayIn) return show(key, todayIn.days[key]);
+    if (atEnd() && todayIn) return show(key, todayIn.days[key]);
     if (M) show(M.mm, M);
   }
 
@@ -286,15 +298,20 @@ window.Months = (function () {
     write(label, inTx(o.got || 0), outTx(o.spent || 0));
   }
 
-  /* Awake while you move. It stays on at the live end (today is not a
-     position, it is the answer) and on a picked day (you asked for it). */
+  /* Awake while you move, and only then — a label that answers "what am I
+     looking at" has nothing to say to someone who is not looking at anything.
+     It used to stay on forever at the live end, which is where the app opens,
+     so it was simply always there: a permanent readout of a question nobody
+     had asked.
+
+     Now the live end buys it longer on screen rather than all of it. A picked
+     day is the one thing that still stays — you asked for that one. */
   function keepAwake() {
     pill.classList.remove('is-gone');
     clearTimeout(restSeq);
     restSeq = setTimeout(() => {
-      const atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 8;
-      if (!atEnd && !picked) pill.classList.add('is-gone');
-    }, C.restMs);
+      if (!picked) pill.classList.add('is-gone');
+    }, atEnd() ? C.todayMs : C.restMs);
   }
 
   /* ---------- the api ---------- */
@@ -312,7 +329,7 @@ window.Months = (function () {
 
       const wrap = document.createElement('div');
       wrap.className = 'm-pillwrap';
-      wrap.innerHTML = '<div class="m-pill" role="status" aria-live="polite">' +
+      wrap.innerHTML = '<div class="m-pill is-gone" role="status" aria-live="polite">' +
         '<b></b><span class="m-in"></span><span class="m-out"></span></div>';
       scroller.insertBefore(wrap, scroller.firstChild);
       pill = wrap.querySelector('.m-pill');
@@ -333,6 +350,17 @@ window.Months = (function () {
       });
       pill.addEventListener('click', () => { picked = null; keepAwake(); paint(); });
 
+      /* The app scrolls this ledger itself — to the foot on load, and up to
+         the draft row on every beat of a compose. That is the app moving,
+         not you, and a label that answers "what am I looking at" has no
+         business answering before anyone has looked.
+
+         So a scroll only wakes the pill once a real gesture has happened.
+         One flag, set by the first touch of any kind and never cleared: the
+         question is whether you are here at all, not what you last did. */
+      for (const ev of ['pointerdown', 'wheel', 'keydown', 'touchstart'])
+        addEventListener(ev, () => { stirred = true; }, { passive: true, capture: true });
+
       scroller.addEventListener('scroll', () => {
         const now = performance.now();
         const dy = Math.abs(scroller.scrollTop - lastTop);
@@ -341,7 +369,7 @@ window.Months = (function () {
         lastAt = now;
         /* scrolling lets a picked day go: a nudge keeps it, a journey does not */
         if (picked && Math.abs(scroller.scrollTop - pickedAt) > C.letGo) picked = null;
-        keepAwake();
+        if (stirred) keepAwake();
         paint();
         clearTimeout(settleSeq);
         settleSeq = setTimeout(() => { fast = false; paint(); }, C.settleMs);
@@ -376,7 +404,11 @@ window.Months = (function () {
       shut.delete(now);
       fold();
       lastTop = scroller.scrollTop;
-      keepAwake();
+      /* no keepAwake: a render is not a movement. The ledger being redrawn —
+         on load, on a font change, on coming back to the tab — is not you
+         looking at it, and the pill answers only what you asked by moving.
+         paint() still runs, so when something DOES wake it, it is already
+         showing the right figures rather than rolling into them. */
       paint();
     },
 
