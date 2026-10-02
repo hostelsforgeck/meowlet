@@ -634,6 +634,42 @@
 
 .money .toolbar {
   bottom: calc(var(--bar-bottom) * var(--u) + env(safe-area-inset-bottom, 0px));
+  /* above the chip strip and the saying (both z-index 5): their lift shadow
+     drops onto whatever is below them, and below them is the plate's top
+     edge and the keys. The bar is the nearer plane, so it paints last. */
+  z-index: 6;
+}
+
+/* ---------- ...and the bar stands on the same ground ----------
+
+   The chip strip was given a ground and the bar was not, so the bar was
+   still a set of opaque objects with the LEDGER between them: a day number
+   in the gap between the plate and the key, more of one in the gutters down
+   either side and under the bar's own 12u standoff.
+
+   It is the same ground, continued: the page colour, solid through the whole
+   bar zone and feathered out at the top, so the ledger dissolves once rather
+   than twice. The feather is shorter than the strip's because the bar stands
+   closer to the bottom and has less room to do it in.
+
+   z-index -1 keeps it behind the plate and the keys and in front of the
+   ledger, which is the one place it belongs. */
+.money .toolbar::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  right: 0;
+  top: calc(-24 * var(--u));
+  /* down to the app's own bottom edge: the standoff and the safe area are
+     bar zone too, and the ledger was showing through both */
+  bottom: calc(-1 * (var(--bar-bottom) * var(--u)
+                     + env(safe-area-inset-bottom, 0px)));
+  background: linear-gradient(to top,
+    var(--bg) 0,
+    var(--bg) 72%,
+    rgba(243, 243, 243, 0) 100%);
+  pointer-events: none;
 }
 
 /* ---------- and the browser's own header stays put ----------
@@ -978,7 +1014,26 @@
   /* snap, so a chip never comes to REST half-cut by either edge — a
      guillotined "Shopping" reading as "pping" is worse than no chip */
   scroll-snap-type: x proximity;
-  scroll-padding-inline: calc(2 * var(--u));
+
+  /* ---- room for the chip's own shadow, inside the clip ----
+     overflow-x: auto forces overflow-y from visible to auto, so this box
+     CLIPS on both axes — and it is exactly chip-sized, so it guillotined
+     each chip's lift shadow into a hard square ledge, worst at the first
+     chip's bottom-left where the two cuts meet. Padding gives the shadow
+     somewhere to fall inside the clip and the matching negative margin
+     hands the space straight back, so no chip moves. 8u inline stays well
+     inside the row's own 12.5u gutter, so a chip that overflows is still
+     cut by an edge short of the screen — just no longer through its blur.
+
+     scroll-padding counts from the PADDING edge, so it has to carry the
+     inline room too or `snap: start` parks every chip 8u off. One constant,
+     so the three can never drift apart. */
+  --room: calc(8 * var(--u));
+  padding-block: calc(14 * var(--u));
+  margin-block: calc(-14 * var(--u));
+  padding-inline: var(--room);
+  margin-inline: calc(-1 * var(--room));
+  scroll-padding-inline: calc(2 * var(--u) + var(--room));
 }
 .money .chipscroll::-webkit-scrollbar { width: 0; height: 0; }
 .money .chipscroll .chip { scroll-snap-align: start; }
