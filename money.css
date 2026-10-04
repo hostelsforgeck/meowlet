@@ -563,29 +563,306 @@
 }
 .choice.is-on .choice-note { color: #a0a0a0; }
 
-/* ---------- read-only tables inside sheets ---------- */
+/* ---------- people ----------
 
-.mini {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(18 * var(--u));
-  font-weight: 500;
+   Who owes you, who you owe, and the one gesture that closes a name.
+
+   This body is laid out edge to edge: `.sheet.is-people` gives the sheet's
+   side gutter back so an opened history reads as a shaded band across the
+   whole sheet rather than a grey box with white margins. Everything inside
+   pays the 22u in itself, which is why every rule here carries its own
+   padding-inline. */
+
+.sheet.is-people { padding-inline: 0; }
+.sheet.is-people .sheet-title,
+.sheet.is-people .sheet-actions,
+.sheet.is-people .hint { margin-inline: calc(22 * var(--u)); }
+
+/* ---------- the two boxes ----------
+
+   Pay and collect are the only pair of figures here meant to be compared with
+   each other, so they stop being section furniture and become two equal
+   halves at the top: neither side outranks the other, and which one matters
+   changes week to week.
+
+   They also carry the words, which is why the lists below them have no
+   headings — a legend printed again beside the thing it labels is a legend
+   nobody reads. The colour of the figure is the only direction mark the rows
+   need, and the colour turning over IS the boundary between the two groups. */
+.pp-boxes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(12 * var(--u));
+  padding: 0 calc(22 * var(--u)) calc(14 * var(--u));
 }
-.mini th, .mini td { padding-right: calc(14 * var(--u)); }
-.mini th:last-child, .mini td:last-child { padding-right: 0; }
-.mini th {
-  text-align: left;
-  font-weight: 400;
+.pp-box {
+  min-width: 0;
+  border-radius: calc(18 * var(--u));
+  padding: calc(13 * var(--u)) calc(14 * var(--u));
+  background: var(--bg);
+}
+.pp-box em {
+  display: block;
+  font: 400 calc(14 * var(--u))/1.35 var(--font);
+  font-style: normal;
+  color: var(--ink-empty);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.pp-box b {
+  display: block;
+  margin-top: calc(2 * var(--u));
+  font: 500 calc(26 * var(--u))/1.3 var(--font);
+  white-space: nowrap;
+}
+.pp-box span {
+  display: block;
+  font: 400 calc(14 * var(--u))/1.35 var(--font);
   color: var(--ink-weekday);
-  padding-bottom: calc(8 * var(--u));
 }
-.mini td {
-  padding-block: calc(9 * var(--u));
-  border-top: 1px solid #efefef;
-  vertical-align: top;
+
+/* ---------- a name ----------
+
+   Name, figure, caret, on a declared grid — so a person's figure and the box
+   total it is part of land on one edge because they are told to, not because
+   the two strings happen to be the same width. */
+.pp-row {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 1fr calc(170 * var(--u)) calc(18 * var(--u));
+  gap: calc(14 * var(--u));
+  padding-inline: calc(22 * var(--u));
+  height: calc(62 * var(--u));
+  background: var(--surface);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
-.mini .num { text-align: right; white-space: nowrap; }
-.mini .is-out { color: var(--accent); }
+.pp-person + .pp-person > .pp-row {
+  box-shadow: inset 0 calc(1 * var(--u)) 0 rgba(11, 11, 11, .06);
+}
+.pp-row:hover { background: #fcfcfc; }
+
+.pp-two { display: flex; flex-direction: column; gap: calc(2 * var(--u)); min-width: 0; }
+.pp-two b {
+  font: 500 calc(20 * var(--u))/1.3 var(--font);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-two span { font: 400 calc(15 * var(--u))/1.3 var(--font); color: var(--ink-weekday); }
+
+.pp-fig {
+  font: 500 calc(21 * var(--u))/1.35 var(--font);
+  text-align: right;
+  white-space: nowrap;
+}
+.pp-pay { color: var(--accent); }
+.pp-get { color: var(--in); }
+
+.pp-caret {
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  color: var(--ink-off);
+  transition: transform .22s var(--ease-out);
+}
+.pp-person.is-shut .pp-caret { transform: rotate(-90deg); }
+.pp-person.is-shut .pp-body { display: none; }
+
+/* ---------- a move ----------
+
+   The ledger's own row re-cut for a sheet with no balance column: the stamp,
+   the reason, and what the money did. 164u holds `31/08/26 08:00` with
+   nothing clipped, and the 14u gap is the gutter the ledger row never needed
+   — there the columns are wide enough to leave one, here the stamp fills its
+   track, so without a declared gap the reason starts the instant the clock
+   ends: 08:00Tea. */
+.pp-txn {
+  display: grid;
+  grid-template-columns: calc(164 * var(--u)) 1fr calc(176 * var(--u));
+  column-gap: calc(14 * var(--u));
+  height: calc(var(--row-h) * var(--u));
+  align-items: center;
+  font: 500 calc(19 * var(--u))/1.35 var(--font);
+  color: var(--ink);
+  background: var(--surface-alt);
+}
+.pp-txn > div { display: flex; align-items: center; min-width: 0; white-space: nowrap; }
+/* day in ink, the rest of the stamp in the clock's grey — the day is what you
+   scan, the month, year and time are what answer "which one" when asked */
+.pp-when {
+  padding-left: calc(22 * var(--u));
+  font-weight: 400;
+  gap: calc(7 * var(--u));
+  overflow: hidden;
+}
+.pp-when span { color: var(--ink-weekday); font-size: calc(15 * var(--u)); }
+.pp-why { overflow: hidden; }
+.pp-why span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* `.pp-txn > div` sets display:flex and outranks a bare `.pp-amt`, so these
+   tracks have to be declared at the same depth or they never apply at all. */
+.pp-txn > .pp-amt {
+  display: grid;
+  grid-template-columns: calc(48 * var(--u)) 1fr;
+  gap: calc(8 * var(--u));
+  padding-right: calc(22 * var(--u));
+}
+.pp-amt i { font-weight: 400; font-style: normal; text-align: left; }
+.pp-amt b { font-weight: 500; text-align: right; }
+
+/* ---------- settling, inside ----------
+
+   A key that repeats on every closed row is not a control, it is texture —
+   ten of them say the same thing ten times before you have decided anything,
+   and the rail it stands on pushes every figure off the total's edge.
+
+   So the closed row keeps the three facts and nothing else, and settling
+   lives where you go when you have decided: inside, at the TOP of the
+   history, as one wide key that says in words what it is about to record.
+   First and not last, because a person with eleven moves would otherwise
+   bury the one thing you opened them to DO under eleven rows of what already
+   happened — the history is a reference, settling is the errand. */
+.pp-act {
+  display: flex;
+  padding: calc(12 * var(--u)) calc(22 * var(--u));
+  background: var(--surface-alt);
+}
+
+/* ---------- swipe to settle ----------
+
+   A sentence in a thin outline could be another row of data; filling it solid
+   fixes that and breaks something else — a key that looks THAT committed, one
+   tap from a finger that was only scrolling, on the one irreversible act in
+   the sheet.
+
+   A swipe is both at once. At rest it is the quiet outlined key it always
+   was; the drag paints it, so the commit is a thing you watch yourself do and
+   can abandon halfway by letting go. Nothing here can happen by accident.
+
+   The chevron revs because a swipe is the one gesture a screen cannot show
+   you — two quick nudges, then it sits still for three seconds, the way a
+   bike blips and waits rather than holding the throttle. A control that
+   animates constantly is noise; one that twitches occasionally is an offer.
+
+   A press and hold fills the same bar on its own, so a thumb that does not
+   want to travel does not have to. Same meter, same threshold, same place to
+   watch — the gesture is a preference, not a second thing to learn. */
+.pp-swipe {
+  position: relative;
+  flex: 1 1 auto;
+  height: calc(46 * var(--u));
+  border-radius: calc(23 * var(--u));
+  border: calc(2 * var(--u)) solid rgba(18, 18, 18, .3);
+  background: var(--surface);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-swipe:active { cursor: grabbing; }
+
+/* the two faces sit on the same box, so the fill reveals the white one
+   exactly over the ink one — no measuring, no second layout */
+.pp-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--u));
+  padding-inline: calc(14 * var(--u));
+  font: 500 calc(18 * var(--u))/1.35 var(--font);
+  white-space: nowrap;
+}
+.pp-face .t { flex: 1 1 auto; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+.pp-face .c { flex: 0 0 auto; width: calc(18 * var(--u)); height: calc(18 * var(--u)); }
+.pp-rest { color: var(--ink); }
+.pp-fill {
+  background: var(--pill);
+  color: #fff;
+  /* clip rather than width: the content keeps the track's own box, so the
+     white copy never shifts a pixel as the black grows under it */
+  clip-path: inset(0 100% 0 0);
+}
+.pp-swipe.is-snap .pp-fill { transition: clip-path .22s var(--ease-out); }
+/* The hold is a CSS fill plus a timer, the way money.js arms a row: the paint
+   never depends on frames being delivered, so a throttled tab cannot leave a
+   half-filled bar that never commits. Declared after .is-snap so it wins. */
+.pp-swipe.is-hold .pp-fill {
+  transition: clip-path 420ms linear;
+  clip-path: inset(0 0 0 0);
+}
+
+@keyframes pp-rev {
+  0%, 100% { transform: translateX(0); }
+  4%  { transform: translateX(calc(6 * var(--u))); }
+  9%  { transform: translateX(0); }
+  13% { transform: translateX(calc(6 * var(--u))); }
+  18% { transform: translateX(0); }
+}
+.pp-rest .c { animation: pp-rev 3.2s var(--ease-out) infinite; color: var(--ink-off); }
+.pp-swipe.is-drag .pp-rest .c, .pp-swipe.is-done .pp-rest .c { animation: none; }
+.pp-swipe.is-done { border-color: var(--pill); cursor: default; }
+
+/* ---------- undo, one second later ----------
+
+   The gesture is deliberate and still not proof against a wrong name tapped
+   in a hurry — and this moves real money on the plate. So the commit lands,
+   and a second afterwards an exit appears on the key that did it.
+
+   A second, not instantly: an undo that arrives with the tick is a second
+   button under the thumb that just pressed, and the whole point of the delay
+   is that the thumb has moved on. It sits inside the filled bar rather than
+   beside it, because it belongs to that one settlement and nothing else. */
+.pp-undo {
+  position: absolute;
+  right: calc(8 * var(--u));
+  top: 50%;
+  transform: translateY(-50%);
+  height: calc(30 * var(--u));
+  padding-inline: calc(13 * var(--u));
+  display: grid;
+  place-items: center;
+  border-radius: calc(15 * var(--u));
+  background: rgba(255, 255, 255, .18);
+  color: #fff;
+  font: 500 calc(15 * var(--u))/1 var(--font);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s var(--ease-out);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-swipe.can-undo .pp-undo { opacity: 1; pointer-events: auto; }
+.pp-undo:active { background: rgba(255, 255, 255, .3); }
+
+/* ---------- settled, and always at the bottom ----------
+
+   A person who is square is not gone — the history is still theirs and still
+   worth opening — but they are finished, and a finished thing that keeps its
+   place in the list is just the list getting longer every month.
+
+   So they fall to the bottom under their own quiet heading, with the figure
+   replaced by the word and no key to press: there is nothing left to settle. */
+.pp-sdiv {
+  padding: calc(18 * var(--u)) calc(22 * var(--u)) calc(6 * var(--u));
+  font: 400 calc(14 * var(--u))/1.35 var(--font);
+  color: var(--ink-off);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  box-shadow: inset 0 calc(1 * var(--u)) 0 rgba(11, 11, 11, .06);
+}
+.pp-done .pp-row { height: calc(48 * var(--u)); }
+.pp-done .pp-two b { font-size: calc(19 * var(--u)); color: var(--ink-weekday); }
+.pp-done .pp-two span { display: none; }
+.pp-done .pp-fig {
+  color: var(--ink-off);
+  font-weight: 400;
+  font-size: calc(17 * var(--u));
+}
+
+/* ---------- the export dump ---------- */
 
 .pre {
   margin: 0;
@@ -1223,6 +1500,8 @@ body.money {
   body.money { transition: none; }
   .money .app, .money .app.is-riding,
   .money .toolbar, .money .chiprow, .money .scroller { transition: none; }
+  /* the settle key stops revving: the twitch is an offer, not information */
+  .pp-rest .c { animation: none; }
 }
 
 

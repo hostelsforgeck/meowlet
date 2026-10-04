@@ -453,13 +453,18 @@
   /* ---------- sheets ---------- */
 
   const overlay = document.getElementById('overlay');
+  const sheetEl = overlay.querySelector('.sheet');
   const sheetTitle = document.getElementById('sheetTitle');
   const sheetBody = document.getElementById('sheetBody');
   const sheetActions = document.getElementById('sheetActions');
   let lastFocus = null;
 
-  function openSheet(title, body, actions) {
+  /* `cls` is for the one body that needs the sheet shaped around it rather
+     than the other way round — People goes edge to edge, so it takes the
+     side gutter back and pays it in itself. */
+  function openSheet(title, body, actions, cls) {
     lastFocus = document.activeElement;
+    sheetEl.className = 'sheet' + (cls ? ' ' + cls : '');
     sheetTitle.textContent = title;
     sheetBody.textContent = '';
     sheetBody.append(body);
@@ -2136,52 +2141,384 @@
   });
 
 
-  /* ---------- people ---------- */
+  /* ---------- people ----------
 
-  function showPeople() {
-    const names = Object.keys(state.people);
-    let body;
+     Who owes you, who you owe, and the one gesture that closes a name.
 
-    if (!names.length) {
-      body = document.createElement('p');
-      body.className = 'hint';
-      body.textContent = 'Nobody owes you, and you owe nobody.';
-    } else {
-      body = document.createElement('table');
-      body.className = 'mini';
-      body.innerHTML =
-        '<thead><tr><th>Name</th><th class="num">₹</th><th>?</th><th>Date</th></tr></thead>';
-      const tbody = document.createElement('tbody');
-      for (const name of names) {
-        const [owed, why, when] = state.people[name];
-        const tr = document.createElement('tr');
-        // The stored sign is only present on a person's first entry,
-        // so normalise through Number rather than reusing the string.
-        const net = Number(owed);
-        const amountCell = document.createElement('td');
-        amountCell.className = 'num' + (net < 0 ? ' is-out' : '');
-        amountCell.textContent = (net > 0 ? '+' : '') + net;
-        const nameCell = document.createElement('td');
-        nameCell.textContent = name;
-        const whyCell = document.createElement('td');
-        whyCell.textContent = why;
-        const whenCell = document.createElement('td');
-        whenCell.textContent = when;
-        tr.append(nameCell, amountCell, whyCell, whenCell);
-        tbody.appendChild(tr);
+     `state.people` holds the open balances; the moves that BUILT them are in
+     history, under the fourth slot of the tuple. The two do not line up on
+     their own — a promise writes a person and no row, and a settled person
+     leaves `state.people` entirely while keeping every row they are named on
+     — so the list is the union of both, and the net is whatever
+     `state.people` still says about them, or zero. */
+
+  function census() {
+    const by = new Map();
+    const touch = (name) => {
+      if (!by.has(name)) by.set(name, { name, net: 0, rows: [], last: null });
+      return by.get(name);
+    };
+
+    for (const [key, day] of Object.entries(state.history)) {
+      const date = parseKey(key);
+      for (const [reason, t] of Object.entries(day)) {
+        if (!t[3]) continue;            /* a row with no name is nobody's */
+        const when = new Date(date);
+        const [hh, mm] = String(t[2] || '00:00').split(':');
+        when.setHours(Number(hh) || 0, Number(mm) || 0, 0, 0);
+        touch(t[3]).rows.push({ when, why: reason, flow: Number(t[1]) });
       }
-      body.appendChild(tbody);
-
-      const legend = document.createElement('p');
-      legend.className = 'hint';
-      /* the same words the moves use, so People reads as the place they land */
-      legend.textContent = '− they must pay you  ·  + you must pay them';
-      const wrap = document.createElement('div');
-      wrap.append(body, legend);
-      body = wrap;
+    }
+    for (const [name, [owed, , key]] of Object.entries(state.people)) {
+      const P = touch(name);
+      P.net = Number(owed);
+      P.promised = parseKey(key);       /* a promise has a date and no row */
     }
 
-    openSheet('People', body, [['Done', 'primary', closeSheet]]);
+    const out = [...by.values()];
+    for (const P of out) {
+      P.rows.sort((a, b) => b.when - a.when);
+      P.last = P.rows.length ? P.rows[0].when : P.promised;
+    }
+    /* open names first, biggest first, then alphabetical — the order the
+       sheet reads top to bottom */
+    out.sort((a, b) => (!!b.net - !!a.net) ||
+                       (Math.abs(b.net) - Math.abs(a.net)) ||
+                       a.name.localeCompare(b.name));
+    return out;
+  }
+
+  /* Settling is not a label change, it is a transaction, and the cash moves
+     the way the row it writes says it does:
+
+         they owe you   net < 0   they hand it over   +   balance UP
+         you owe them   net > 0   you hand it over    −   balance DOWN
+
+     `updatePerson` nets them to zero and drops them out of `state.people` on
+     its own, which is exactly what settled means. Their rows stay: Ravi gave
+     me ₹100 and I gave Ravi ₹100 is two rows and a zero, not two rows gone. */
+  const SETTLE_WHY = 'Settled up';
+
+  function settlePerson(P) {
+    const when = new Date();
+    const key = dateKey(when);
+    const snap = { name: P.name, was: state.people[P.name].slice(),
+                   key, start: opening() };
+    record(state, when, P.net > 0 ? '-' : '+', Math.abs(P.net), SETTLE_WHY, P.name);
+    /* the reason may have been uniquified — two people settled on one day —
+       so the way back out reads back the key `record` actually used */
+    const reasons = Object.keys(state.history[key]);
+    snap.reason = reasons[reasons.length - 1];
+    save();
+    render();
+    return snap;
+  }
+
+  /* ...and the way back out: the row deleted, the ledger run again from the
+     balance it opened on, and the person put back exactly as they were. */
+  function unsettlePerson(snap) {
+    const day = state.history[snap.key];
+    if (day) {
+      delete day[snap.reason];
+      if (!Object.keys(day).length) delete state.history[snap.key];
+    }
+    rebalance(snap.start);
+    state.people[snap.name] = snap.was;
+    save();
+    render();
+  }
+
+  /* the figure is always the size of the debt — which side it is on is
+     carried by the colour and by the word beside it, never by a sign */
+  const money = (n) => rupees(Math.abs(n));
+  const sum = (xs) => xs.reduce((a, P) => a + Math.abs(P.net), 0);
+
+  function ago(d) {
+    const days = Math.round((Date.now() - d) / 864e5);
+    if (days < 1) return 'today';
+    if (days < 7) return days + 'd ago';
+    if (days < 60) return Math.round(days / 7) + 'w ago';
+    if (days < 365) return Math.round(days / 30) + 'mo ago';
+    return Math.round(days / 365) + 'y ago';
+  }
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const stamp = (d) => pad2(d.getDate()) +
+    '<span>/' + pad2(d.getMonth() + 1) + '/' + String(d.getFullYear()).slice(-2) + '</span>' +
+    '<span>' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + '</span>';
+
+  const CARET =
+    '<svg class="pp-caret" viewBox="0 0 18 18" aria-hidden="true">' +
+    '<path d="M4.5 7L9 11.5L13.5 7" fill="none" stroke="currentColor" stroke-width="2.2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" /></svg>';
+  const CHEV =
+    '<svg class="c" viewBox="0 0 18 18" aria-hidden="true">' +
+    '<path d="M7 4.5L11.5 9L7 13.5" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>';
+  const TICK =
+    '<svg class="c" viewBox="0 0 18 18" aria-hidden="true">' +
+    '<path d="M3.5 9.5L7 13L14.5 5" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>';
+
+  /* ---------- one meter, two gestures ----------
+
+     Drag right to about four fifths and let go to commit; let go short of it
+     and it springs back. Or press and hold and it fills on its own — move
+     sideways before it finishes and the hold is abandoned and the drag takes
+     over from where the finger actually is. Both run the same fill, so there
+     is one thing to learn and one thing to watch. */
+  function swipe(said) {
+    const el = document.createElement('div');
+    el.className = 'pp-swipe';
+    el.setAttribute('role', 'button');
+    el.tabIndex = 0;
+    const face = (cls, glyph) =>
+      '<div class="pp-face ' + cls + '">' + glyph + '<span class="t"></span></div>';
+    el.innerHTML = face('pp-rest', CHEV) + face('pp-fill', CHEV);
+    for (const t of el.querySelectorAll('.t')) t.textContent = said;
+
+    const fill = el.querySelector('.pp-fill');
+    /* 420ms is the app's own hold — row-arm and key-arm both run it, and the
+       bin key is already an irreversible thing committed at that length. */
+    const HOLD = 420, SLOP = 8;
+    let id = null, x0 = 0, p = 0, done = false, mode = null, timer = 0;
+    const paint = (v) => { fill.style.clipPath = 'inset(0 ' + ((1 - v) * 100) + '% 0 0)'; };
+
+    const settle = () => {
+      done = true;
+      clearTimeout(timer); timer = 0;
+      el.classList.remove('is-hold');
+      el.classList.add('is-done', 'is-snap');
+      paint(1);
+      for (const t of el.querySelectorAll('.t')) t.textContent = 'settled';
+      for (const c of el.querySelectorAll('.c')) c.outerHTML = TICK;
+      el.dispatchEvent(new CustomEvent('settled'));
+      /* the way out, a beat after the way in */
+      setTimeout(() => el.classList.add('can-undo'), reduced ? 300 : 1000);
+    };
+
+    const undo = document.createElement('div');
+    undo.className = 'pp-undo';
+    undo.textContent = 'undo';
+    undo.addEventListener('pointerdown', (e) => e.stopPropagation());
+    undo.addEventListener('click', (e) => {
+      e.stopPropagation();
+      el.dispatchEvent(new CustomEvent('unsettled'));
+    });
+    el.appendChild(undo);
+
+    const stopHold = () => { clearTimeout(timer); timer = 0; el.classList.remove('is-hold'); };
+
+    el.addEventListener('pointerdown', (e) => {
+      if (done) return;
+      e.stopPropagation();
+      id = e.pointerId; x0 = e.clientX; mode = 'hold';
+      el.setPointerCapture(id);
+      el.classList.add('is-drag', 'is-hold');
+      el.classList.remove('is-snap');
+      fill.style.clipPath = '';          /* hand the fill back to the CSS */
+      timer = setTimeout(() => { timer = 0; settle(); }, HOLD);
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (done || e.pointerId !== id) return;
+      const dx = e.clientX - x0;
+      /* a sideways finger was never holding — take the fill back and drag it */
+      if (mode === 'hold' && Math.abs(dx) > SLOP) { stopHold(); mode = 'drag'; }
+      if (mode !== 'drag') return;
+      p = Math.max(0, Math.min(1, dx / (el.clientWidth * 0.82)));
+      paint(p);
+    });
+    const release = (e) => {
+      if (done || e.pointerId !== id) return;
+      stopHold();
+      id = null; mode = null;
+      el.classList.remove('is-drag');
+      el.classList.add('is-snap');
+      if (p >= 0.995) settle(); else paint(0);
+      p = 0;
+    };
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    /* a keyboard has no swipe, so Enter is the whole gesture */
+    el.addEventListener('keydown', (e) => {
+      if (done) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); settle(); }
+    });
+    /* the row under it opens and shuts on click; this is not that */
+    el.addEventListener('click', (e) => e.stopPropagation());
+    return el;
+  }
+
+  function moveRow(t) {
+    const row = document.createElement('div');
+    row.className = 'pp-txn';
+    row.innerHTML = '<div class="pp-when">' + stamp(t.when) + '</div>' +
+      '<div class="pp-why"><span></span></div>' +
+      '<div class="pp-amt ' + (t.flow < 0 ? 'pp-pay' : 'pp-get') + '"><i>' +
+      (t.flow < 0 ? 'paid' : 'got') + '</i><b></b></div>';
+    row.querySelector('.pp-why span').textContent = t.why;
+    row.querySelector('.pp-amt b').textContent = money(t.flow);
+    return row;
+  }
+
+  /* the history, and above it the one thing you can do about it */
+  function personBody(P, withKey) {
+    const b = document.createElement('div');
+    b.className = 'pp-body';
+    if (withKey) {
+      const act = document.createElement('div');
+      act.className = 'pp-act';
+      /* the app already says this: the four person moves are labelled
+         `I gave someone` and `Someone gave me`. The key that CLOSES one is
+         the same sentence with the name where someone was. */
+      act.appendChild(swipe(P.net > 0
+        ? 'I gave ' + P.name + ' ' + money(P.net)
+        : P.name + ' gave me ' + money(P.net)));
+      b.appendChild(act);
+    }
+    for (const t of P.rows) b.appendChild(moveRow(t));
+    return b;
+  }
+
+  function personBlock(P, cls, withKey) {
+    const w = document.createElement('div');
+    w.className = 'pp-person is-shut';
+    w.P = P;
+
+    const head = document.createElement('div');
+    head.className = 'pp-row';
+    const two = document.createElement('div');
+    two.className = 'pp-two';
+    two.innerHTML = '<b></b><span></span>';
+    two.querySelector('b').textContent = P.name;
+    two.querySelector('span').textContent = P.last ? ago(P.last) : '';
+    const fig = document.createElement('div');
+    fig.className = 'pp-fig ' + cls;
+    fig.textContent = money(P.net);
+    head.append(two, fig);
+    head.insertAdjacentHTML('beforeend', CARET);
+    head.addEventListener('click', () => w.classList.toggle('is-shut'));
+
+    w.append(head, personBody(P, withKey));
+    return w;
+  }
+
+  function tally(label, list, cls) {
+    const b = document.createElement('div');
+    b.className = 'pp-box';
+    b.innerHTML = '<em></em><b></b><span></span>';
+    b.children[0].textContent = label;
+    b.children[1].className = cls;
+    b.children[1].textContent = rupees(sum(list));
+    b.children[2].textContent = list.length + (list.length === 1 ? ' person' : ' people');
+    return b;
+  }
+
+  function showPeople() {
+    const PEOPLE = census();
+
+    if (!PEOPLE.length) {
+      const hint = document.createElement('p');
+      hint.className = 'hint';
+      hint.textContent = 'Nobody owes you, and you owe nobody.';
+      openSheet('People', hint, [['Done', 'primary', closeSheet]]);
+      return;
+    }
+
+    const body = document.createElement('div');
+    body.className = 'pp';
+    const boxes = document.createElement('div');
+    boxes.className = 'pp-boxes';
+    const sdiv = document.createElement('div');
+    sdiv.className = 'pp-sdiv';
+    sdiv.textContent = 'settled';
+    const done = document.createElement('div');
+    done.className = 'pp-done';
+
+    /* the sheet is modal and nothing else writes while it is up, so the two
+       sides are held here and the nodes keep their identity across a settle */
+    const live = { pay: PEOPLE.filter((P) => P.net > 0),
+                   collect: PEOPLE.filter((P) => P.net < 0) };
+
+    function paintBoxes() {
+      boxes.textContent = '';
+      boxes.append(tally('pay', live.pay, 'pp-pay'),
+                   tally('collect', live.collect, 'pp-get'));
+      sdiv.hidden = !done.children.length;
+    }
+
+    function onSettle(P, node) {
+      const was = P.net;
+      P.snap = settlePerson(P);
+      P.was = was;
+      P.net = 0;
+      live[was > 0 ? 'pay' : 'collect'] =
+        live[was > 0 ? 'pay' : 'collect'].filter((x) => x !== P);
+      /* the settlement is a row like any other, so it joins the history it
+         just closed — in front, where the newest move belongs */
+      const t = { when: new Date(), why: P.snap.reason, flow: -was };
+      P.rows.unshift(t);
+      node.querySelector('.pp-act').after(moveRow(t));
+      paintBoxes();
+
+      /* the row keeps its history and goes quiet at the bottom — but the key
+         it was settled with travels with it, so undo stays where the eye last
+         saw the commit happen */
+      setTimeout(() => {
+        node.classList.add('is-shut');
+        const fig = node.querySelector('.pp-fig');
+        fig.textContent = 'settled';
+        fig.className = 'pp-fig';
+        done.appendChild(node);
+      }, reduced ? 0 : 420);
+    }
+
+    /* every effect reversed, and the row rebuilt from scratch so it comes
+       back in its proper place, open to being settled again rather than
+       stuck wearing a spent key */
+    function onUndo(P) {
+      unsettlePerson(P.snap);
+      P.snap = null;
+      P.net = P.was;
+      P.was = 0;
+      P.rows.shift();
+      const side = P.net > 0 ? 'pay' : 'collect';
+      live[side].push(P);
+      live[side].sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+      rebuild();
+      paintBoxes();
+    }
+
+    function openRow(P, cls) {
+      const node = personBlock(P, cls, true);
+      const sw = node.querySelector('.pp-swipe');
+      sw.addEventListener('settled', () => onSettle(P, node));
+      sw.addEventListener('unsettled', () => onUndo(P));
+      return node;
+    }
+
+    function rebuild() {
+      for (const n of [...body.children])
+        if (n !== boxes && n !== sdiv && n !== done) n.remove();
+      for (const [side, cls] of [['pay', 'pp-pay'], ['collect', 'pp-get']])
+        for (const P of live[side]) body.insertBefore(openRow(P, cls), sdiv);
+      /* a person pulled back out of settled leaves it */
+      for (const n of [...done.children]) if (n.P.net) n.remove();
+    }
+
+    /* the ones that were already square when the sheet opened */
+    for (const P of PEOPLE) {
+      if (P.net) continue;
+      const node = personBlock(P, '', false);
+      node.querySelector('.pp-fig').textContent = 'settled';
+      done.appendChild(node);
+    }
+
+    body.append(boxes, sdiv, done);
+    rebuild();
+    paintBoxes();
+
+    openSheet('People', body, [['Done', 'primary', closeSheet]], 'is-people');
   }
 
   /* ---------- export ---------- */
