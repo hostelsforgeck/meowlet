@@ -685,11 +685,13 @@
       google: 'JetBrains+Mono:wght@400;500', note: 'tall x-height' },
     { id: 'geist',     label: 'Geist Mono',     family: 'Geist Mono',
       google: 'Geist+Mono:wght@400;500',    note: 'narrow, flat' },
-    { id: 'source',    label: 'Source Code Pro', family: 'Source Code Pro',
-      google: 'Source+Code+Pro:wght@400;500', note: 'wider, rounder' },
-    { id: 'system',    label: 'System mono',    family: null,
-      google: null, note: 'no download — whatever this device ships' },
   ];
+  /* Four, not six. `Source Code Pro` sat between Plex and JetBrains without
+     being either, and `System mono` is a different face on every device —
+     an option whose own preview cannot promise what it will look like.
+
+     Six faces is a decision; four is a glance. An id saved by an older
+     version falls through `fontById` to Plex and nothing breaks. */
 
   const DEFAULT_FONT = 'plex';
   const fontById = (id) => FONTS.find((f) => f.id === id) || FONTS[0];
@@ -2741,37 +2743,128 @@ You
      Tapping the plate opens this. A single tap, not a double — a custom
      double-tap is how VoiceOver and TalkBack activate things, so it would
      put every one of these controls out of reach. It also means the plate
-     stays clean: no icon has to sit on the balance. */
+     stays clean: no icon has to sit on the balance.
+
+     Every row carries its VALUE. Seven rows that each said one word were
+     seven rows you had to open to learn anything, and six of those openings
+     ended in you closing it again. */
+
+  const CARET_Y =
+    '<svg class="yo-caret" viewBox="0 0 18 18" aria-hidden="true">' +
+    '<path d="M7 4.5L11.5 9L7 13.5" fill="none" stroke="currentColor" stroke-width="2.2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" /></svg>';
+
+  function yoRow(label, value, run, cls) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'yo-row' + (cls ? ' ' + cls : '');
+    const l = document.createElement('span');
+    l.textContent = label;
+    const v = value instanceof Node ? value : document.createElement('span');
+    if (!(value instanceof Node)) { v.className = 'yo-val'; v.textContent = value || ''; }
+    b.append(l, v);
+    b.insertAdjacentHTML('beforeend', CARET_Y);
+    if (run) b.addEventListener('click', run);
+    return b;
+  }
+
+  function yoDiv(text) {
+    const d = document.createElement('div');
+    d.className = 'yo-div';
+    if (text) d.textContent = text;
+    return d;
+  }
+
+  /* the flow sample, drawn the way that mode draws the ledger */
+  function yoFlow() {
+    const s = document.createElement('span');
+    s.className = 'yo-val yo-flow f-' + state.flow;
+    const out = document.createElement('i');
+    out.className = 'eg-out';
+    out.textContent = (state.flow === 'colour' ? '' : '−') + '₹620';
+    const inn = document.createElement('i');
+    inn.className = 'eg-in';
+    inn.textContent = (state.flow === 'colour' || state.flow === 'minus' ? '' : '+') + '₹500';
+    s.append(out, inn);
+    return s;
+  }
+
+  /* ---------- what the rows have to say ----------
+
+     Read rather than stored: the sheet is opened rarely and these are three
+     walks of an object the app is already holding, which is cheaper than any
+     counter that could drift out of step with the ledger. */
+
+  const countRows = () =>
+    Object.values(state.history).reduce((n, day) => n + Object.keys(day).length, 0);
+
+  /* the newest transaction, without taking it out — `undo()` removes, and
+     this row has to be able to NAME what it would remove before you press */
+  function lastTxn() {
+    const days = Object.keys(state.history);
+    for (let i = days.length - 1; i >= 0; i--) {
+      const reasons = Object.keys(state.history[days[i]]);
+      if (reasons.length) {
+        const key = reasons[reasons.length - 1];
+        return { reason: key, flow: state.history[days[i]][key][1] };
+      }
+    }
+    return null;
+  }
 
   function showYou() {
     const body = document.createElement('div');
 
-    const bal = document.createElement('p');
-    bal.className = 'you-bal' + (state.current < 0 ? ' is-negative' : '');
-    bal.textContent = rupees(state.current);
-    body.appendChild(bal);
+    /* money */
+    const open = Object.keys(state.people).length;
+    body.appendChild(yoRow('People', open ? open + ' open' : '', showPeople));
+    const rows = countRows();
+    body.appendChild(yoRow('Export', rows ? rows + (rows === 1 ? ' row' : ' rows') : '',
+      exportHistory));
 
-    const list = document.createElement('div');
-    list.className = 'you-list';
-    for (const [label, run] of [
-      ['People', showPeople],
-      ['Undo last', undoLast],
-      ['Export', exportHistory],
-      ['Your name', setName],
-      ['Flow', chooseFlow],
-      ['Font', chooseFont],
-      ['Help', showHelp],
-    ]) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'menu-item';
-      b.textContent = label;
-      b.addEventListener('click', run);
-      list.appendChild(b);
+    /* look — the two settings that exist only to change how the ledger reads */
+    body.appendChild(yoDiv('look'));
+    body.appendChild(yoRow('Font', currentFont.label, chooseFont));
+    body.appendChild(yoRow('Flow', yoFlow(), chooseFlow));
+
+    /* you */
+    body.appendChild(yoDiv('you'));
+    body.appendChild(yoRow('Your name', state.name, setName));
+    body.appendChild(yoRow('Help', '', showHelp));
+
+    /* ...and the one row here that rewrites the ledger. It goes last, it
+       goes red, and it says what it is about to take out: a button that
+       will not tell you what it undoes is a button you cannot press on
+       purpose. With an empty ledger it is not drawn at all, because a
+       control that can only answer `nothing to undo` is not a control. */
+    const last = lastTxn();
+    if (last) {
+      body.appendChild(yoDiv(''));
+      body.appendChild(yoRow('Undo last', last.reason + '  ' + flowText(last.flow),
+        undoLast, 'is-undo'));
     }
-    body.appendChild(list);
 
-    openSheet(state.name || 'You', body, [['Done', 'primary', closeSheet]]);
+    openSheet(greeting(), body, [['Done', 'primary', closeSheet]], 'is-you');
+
+    /* With no name the greeting is just `Good evening` and `Your name` below
+       is a row with an empty value — true, and no kind of invitation. The ask
+       goes beside the greeting it would change, where the gap actually is,
+       and it exists only while the gap does. */
+    if (!state.name) {
+      const ask = document.createElement('button');
+      ask.type = 'button';
+      ask.className = 'yo-ask';
+      ask.textContent = 'add your name';
+      ask.addEventListener('click', setName);
+      sheetTitle.appendChild(ask);
+    }
+  }
+
+  /* greet.js is optional scenery in its own file, so it is asked rather than
+     called: without it the sheet is titled the way it always was. */
+  function greeting() {
+    if (window.Greet) return window.Greet.say(state.name);
+    return state.name || 'You';
   }
 
   function undoLast() {

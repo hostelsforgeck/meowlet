@@ -348,33 +348,130 @@
   color: var(--ink-empty);
 }
 
-/* action rows inside the You sheet */
-.menu-item {
+/* ---------- You ----------
+
+   Seven rows that each said one word, and none of them what it was set to.
+   `Font` did not say which font, `Flow` did not say which mode, and
+   `Undo last` — the only row in this sheet that rewrites the ledger — did
+   not say what it was about to take out.
+
+   So every row carries its VALUE, which turns most of these from a trip
+   into a glance: you open the sheet to check which face is on and you have
+   already left. Three groups, because the seven were never one list. And
+   the destructive row goes last, in red, with its receipt.
+
+   REJECTED — the balance restated at the top with the month that made it.
+   The plate IS the balance and you tapped it to get here, and the month
+   band over the ledger has been printing the two figures the whole time. A
+   sheet that opens by telling you what you just read wastes its first 90u. */
+
+.sheet.is-you { padding-inline: 0; }
+.sheet.is-you .sheet-title,
+.sheet.is-you .sheet-actions { margin-inline: calc(22 * var(--u)); }
+
+/* label left, value right, caret after it. The lead slot is empty on an
+   ordinary row and carries the chevron on a `Back` one, so both shapes
+   come off one grid and land on one baseline. */
+.yo-row {
   all: unset;
-  display: flex;
-  align-items: center;
   box-sizing: border-box;
+  display: grid;
+  align-items: center;
+  grid-template-columns: 1fr auto calc(18 * var(--u));
+  gap: calc(12 * var(--u));
   width: 100%;
-  height: calc(46 * var(--u));
-  padding-inline: calc(14 * var(--u));
-  border-radius: calc(13 * var(--u));
-  font-size: calc(19 * var(--u));
+  height: calc(56 * var(--u));
+  padding-inline: calc(22 * var(--u));
+  font-size: calc(20 * var(--u));
+  font-weight: 400;
+  color: var(--ink);
   cursor: pointer;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
-.menu-item:hover, .menu-item:focus-visible { background: rgba(0, 0, 0, .05); }
-.menu-item:active { background: rgba(0, 0, 0, .08); }
-.menu-item:focus-visible { box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--ink); }
+.yo-row + .yo-row { box-shadow: inset 0 calc(1 * var(--u)) 0 rgba(11, 11, 11, .06); }
+.yo-row:hover { background: #fcfcfc; }
+.yo-row:active { background: #f6f6f6; }
+.yo-row:focus-visible { box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--ink); }
 
-/* the balance, restated at the head of the You sheet */
-.you-bal {
-  margin: 0 0 calc(18 * var(--u));
-  font-size: calc(38 * var(--u));
-  font-weight: 500;
-  letter-spacing: -.01em;
+.yo-val {
+  justify-self: end;
+  font-size: calc(18 * var(--u));
+  font-weight: 400;
+  color: var(--ink-weekday);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.you-bal.is-negative { color: var(--accent); }
-.you-list { display: flex; flex-direction: column; gap: calc(2 * var(--u)); }
+.yo-caret {
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  color: var(--ink-off);
+}
+
+/* a group label, the same mark People prints over `settled` */
+.yo-div {
+  padding: calc(16 * var(--u)) calc(22 * var(--u)) calc(6 * var(--u));
+  font-size: calc(14 * var(--u));
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--ink-off);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  box-shadow: inset 0 calc(1 * var(--u)) 0 rgba(11, 11, 11, .06);
+}
+/* an unlabelled one is a gap with a rule in it, which is all the last group
+   needs: `undo` is not a category, it is a different KIND of thing from
+   everything above it */
+.yo-div:empty { padding: calc(13 * var(--u)) 0 0; }
+
+/* ---------- undo, which is not a setting ---------- */
+.yo-row.is-undo { color: var(--accent); }
+.yo-row.is-undo .yo-val { color: var(--accent); opacity: .7; }
+.yo-row.is-undo .yo-caret { color: var(--accent); opacity: .45; }
+
+/* the flow sample, printed where the value goes — the setting and its
+   preview are the same object, so there is nothing to go and look at.
+   Laid out in a ROW here; `.flow-eg` in the chooser stacks its two, which
+   is right for a 60u card and wrong for an 18u value. */
+.yo-flow { display: flex; gap: calc(10 * var(--u)); white-space: nowrap; }
+.yo-flow i { font-style: normal; font-size: calc(17 * var(--u)); font-weight: 500; }
+.yo-flow.f-both .eg-out, .yo-flow.f-colour .eg-out,
+.yo-flow.f-minus .eg-out { color: var(--accent); }
+.yo-flow.f-both .eg-in, .yo-flow.f-colour .eg-in { color: var(--in); }
+.yo-flow.f-minus .eg-in, .yo-flow.f-sign .eg-out,
+.yo-flow.f-sign .eg-in { color: var(--ink); }
+
+/* ---------- the name, when there is not one yet ----------
+
+   With no name the greeting is just `Good evening`, and `Your name` below
+   is a row with an empty value — true, and no kind of invitation. The ask
+   belongs beside the greeting it would change, where the gap is.
+
+   It only exists while the gap does. Once the app knows who you are the
+   key goes for good and the row below is the only way back to it, which is
+   where a thing you change twice a decade belongs. */
+.yo-ask {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  height: calc(30 * var(--u));
+  margin-left: calc(10 * var(--u));
+  padding-inline: calc(12 * var(--u));
+  border-radius: calc(15 * var(--u));
+  border: calc(2 * var(--u)) solid rgba(18, 18, 18, .22);
+  font-size: calc(15 * var(--u));
+  font-weight: 500;
+  color: var(--ink-weekday);
+  vertical-align: middle;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: color .16s var(--ease-out), border-color .16s var(--ease-out);
+}
+.yo-ask:hover, .yo-ask:focus-visible { color: var(--ink); border-color: var(--ink); }
+.yo-ask:focus-visible { outline: calc(2 * var(--u)) solid var(--accent); outline-offset: calc(2 * var(--u)); }
 
 /* ---------- sheets ---------- */
 
