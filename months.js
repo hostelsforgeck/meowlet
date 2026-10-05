@@ -210,6 +210,7 @@ window.Months = (function () {
 
   /* Which months are folded, applied to the rows and to the carets. */
   function fold() {
+    stale();
     card.dataset.shut = [...shut].join(' ');
     for (const row of card.querySelectorAll('.row[data-mm]')) {
       row.classList.toggle('is-folded', shut.has(row.dataset.mm));
@@ -263,20 +264,33 @@ window.Months = (function () {
     pill.style.width = to + 'px';
   }
 
+  /* The visible rows, cached: re-querying thousands of them on every scroll
+     event was the whole cost of this module. Invalidated by sync/add/fold. */
+  let live = null;
+  function rows() {
+    if (!live) live = [...card.querySelectorAll('.row[data-mm]:not(.is-folded)')];
+    return live;
+  }
+  function stale() { live = null; }
+
   /* At the live end you are looking at today, so the pill answers "today".
      One flick up and you are no longer reading a day, you are reading a
      month — so it zooms out. A day you tapped outranks both. */
   function paint() {
     if (!pill) return;
-    const rows = [...card.querySelectorAll('.row[data-mm]:not(.is-folded)')];
-    if (!rows.length || card.hidden) { pill.classList.add('is-hidden'); return; }
+    const all = rows();
+    if (!all.length || card.hidden) { pill.classList.add('is-hidden'); return; }
 
+    /* Rows are in document order and stacked, so the first one crossing the
+       line is found by halving rather than by reading every rect above it —
+       eleven measurements on a three-year ledger instead of two thousand. */
     const top = scroller.getBoundingClientRect().top + 44;
-    let hit = null;
-    for (const el of rows) {
-      if (el.getBoundingClientRect().bottom >= top) { hit = el; break; }
+    let lo = 0, hi = all.length - 1, hit = all[hi];
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (all[mid].getBoundingClientRect().bottom >= top) { hit = all[mid]; hi = mid - 1; }
+      else lo = mid + 1;
     }
-    if (!hit) hit = rows[rows.length - 1];
     pill.classList.remove('is-hidden');
 
     const key = dayOf(new Date());
@@ -361,18 +375,26 @@ window.Months = (function () {
       for (const ev of ['pointerdown', 'wheel', 'keydown', 'touchstart'])
         addEventListener(ev, () => { stirred = true; }, { passive: true, capture: true });
 
+      /* Scroll fires faster than the screen draws, so the work is collapsed
+         into one pass a frame. */
+      let queued = false;
       scroller.addEventListener('scroll', () => {
-        const now = performance.now();
-        const dy = Math.abs(scroller.scrollTop - lastTop);
-        fast = dy / Math.max(now - lastAt, 8) > C.fling;
-        lastTop = scroller.scrollTop;
-        lastAt = now;
-        /* scrolling lets a picked day go: a nudge keeps it, a journey does not */
-        if (picked && Math.abs(scroller.scrollTop - pickedAt) > C.letGo) picked = null;
-        if (stirred) keepAwake();
-        paint();
-        clearTimeout(settleSeq);
-        settleSeq = setTimeout(() => { fast = false; paint(); }, C.settleMs);
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => {
+          queued = false;
+          const now = performance.now();
+          const dy = Math.abs(scroller.scrollTop - lastTop);
+          fast = dy / Math.max(now - lastAt, 8) > C.fling;
+          lastTop = scroller.scrollTop;
+          lastAt = now;
+          /* a nudge keeps a picked day, a journey lets it go */
+          if (picked && Math.abs(scroller.scrollTop - pickedAt) > C.letGo) picked = null;
+          if (stirred) keepAwake();
+          paint();
+          clearTimeout(settleSeq);
+          settleSeq = setTimeout(() => { fast = false; paint(); }, C.settleMs);
+        });
       }, { passive: true });
 
       /* money.js has already drawn the ledger by the time this runs, so the
@@ -385,6 +407,7 @@ window.Months = (function () {
        the bands are put back and the folds re-applied. */
     sync() {
       if (!card) return;
+      stale();
       for (const b of [...card.querySelectorAll('.m-band')]) b.remove();
       gather();
       const now = mmOf(new Date());
@@ -421,6 +444,7 @@ window.Months = (function () {
        opened a month nobody had seen yet. */
     add(row) {
       if (!card || !row) return;
+      stale();
       const mm = row.dataset.mm;
       const day = row.dataset.day;
       const flow = Number(row.dataset.flow) || 0;

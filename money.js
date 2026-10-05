@@ -3258,10 +3258,16 @@ You
     slipTo(d < 0 ? slipGone() : 0);   /* up is the long read, and it costs the bar */
   }
 
+  /* All of it on the frame, not on the event: scroll fires faster than the
+     screen draws, and disarming a row the first time disarms it for good. */
   scroller.addEventListener('scroll', () => {
-    disarmRow();
-    if (window.Mascot) window.Mascot.wake();
-    if (!slipQueued) { slipQueued = true; requestAnimationFrame(slipRead); }
+    if (slipQueued) return;
+    slipQueued = true;
+    requestAnimationFrame(() => {
+      disarmRow();
+      if (window.Mascot) window.Mascot.wake();
+      slipRead();
+    });
   }, { passive: true });
 
   document.addEventListener('keydown', (e) => {

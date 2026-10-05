@@ -112,7 +112,16 @@ body {
     1fr;                     /* mark B         */
   height: calc(var(--row-h) * var(--u));
   align-items: center;
+  /* Three years of ledger is a few thousand rows and the browser was laying
+     out and painting all of them. A row off the screen now costs nothing
+     until it comes back; `auto` keeps its real measured height, so scroll
+     position and the month bands land exactly where they did. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto calc(var(--row-h) * var(--u));
 }
+/* the draft row is the one with no fixed height — it opens downward as the
+   reason grows, so it is never allowed to be skipped and guessed at */
+.row.is-draft { content-visibility: visible; }
 
 .row.is-weekend { background: var(--surface-alt); }
 
