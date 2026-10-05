@@ -2287,21 +2287,40 @@
     const settle = () => {
       done = true;
       clearTimeout(timer); timer = 0;
-      el.classList.remove('is-hold');
+      el.classList.remove('is-hold', 'is-drag');
       el.classList.add('is-done', 'is-snap');
       paint(1);
       for (const t of el.querySelectorAll('.t')) t.textContent = 'settled';
       for (const c of el.querySelectorAll('.c')) c.outerHTML = TICK;
       el.dispatchEvent(new CustomEvent('settled'));
-      /* the way out, a beat after the way in */
-      setTimeout(() => el.classList.add('can-undo'), reduced ? 300 : 1000);
+      /* ...and the way out, in the same breath. The thumb is still on the bar
+         it just filled, so the exit belongs there at that moment — an undo
+         that arrives a second later arrives after the eye has moved on, and
+         is then something you have to go and FIND. */
+      el.classList.add('can-undo');
     };
 
+    /* ---------- the exit ----------
+
+       It appears under the very finger that committed, so the one thing it
+       may never answer to is that finger's own release: `pointerup` on the
+       committing pointer is captured by the bar, and the `click` that trails
+       it is dropped here. A press that starts ON the chip is a new gesture
+       and the only one that counts. */
     const undo = document.createElement('div');
     undo.className = 'pp-undo';
     undo.textContent = 'undo';
-    undo.addEventListener('pointerdown', (e) => e.stopPropagation());
-    undo.addEventListener('click', (e) => {
+    undo.setAttribute('role', 'button');
+    undo.tabIndex = 0;
+    undo.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
+    undo.addEventListener('pointerup', (e) => {
+      e.stopPropagation();
+      el.dispatchEvent(new CustomEvent('unsettled'));
+    });
+    undo.addEventListener('click', (e) => e.stopPropagation());
+    undo.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
       e.stopPropagation();
       el.dispatchEvent(new CustomEvent('unsettled'));
     });
@@ -2329,11 +2348,13 @@
       paint(p);
     });
     const release = (e) => {
-      if (done || e.pointerId !== id) return;
+      if (e.pointerId !== id) return;
       stopHold();
       id = null; mode = null;
       el.classList.remove('is-drag');
       el.classList.add('is-snap');
+      /* a hold that already committed has nothing left to spring back */
+      if (done) return;
       if (p >= 0.995) settle(); else paint(0);
       p = 0;
     };
@@ -2383,7 +2404,6 @@
   function personBlock(P, cls, withKey) {
     const w = document.createElement('div');
     w.className = 'pp-person is-shut';
-    w.P = P;
 
     const head = document.createElement('div');
     head.className = 'pp-row';
@@ -2459,33 +2479,35 @@
       const t = { when: new Date(), why: P.snap.reason, flow: -was };
       P.rows.unshift(t);
       node.querySelector('.pp-act').after(moveRow(t));
-      paintBoxes();
 
-      /* the row keeps its history and goes quiet at the bottom — but the key
-         it was settled with travels with it, so undo stays where the eye last
-         saw the commit happen */
-      setTimeout(() => {
-        node.classList.add('is-shut');
-        const fig = node.querySelector('.pp-fig');
-        fig.textContent = 'settled';
-        fig.className = 'pp-fig';
-        done.appendChild(node);
-      }, reduced ? 0 : 420);
+      /* ...and it says so where it stands. The figure becomes the word and
+         the name goes quiet, but the row does NOT travel to the bottom: the
+         undo lives on this key, and a key that moves the instant it is
+         pressed is a key you have to go and find. Nothing resizes either —
+         a row that changes height here shifts the exit out from under the
+         thumb that is still on it.
+
+         They are filed under `settled` the next time the sheet opens, which
+         is the first moment nobody is looking at them. */
+      node.classList.add('is-done');
+      const fig = node.querySelector('.pp-fig');
+      fig.textContent = 'settled';
+      fig.className = 'pp-fig';
+      paintBoxes();
     }
 
-    /* every effect reversed, and the row rebuilt from scratch so it comes
-       back in its proper place, open to being settled again rather than
-       stuck wearing a spent key */
-    function onUndo(P) {
+    /* every effect reversed, and the row rebuilt from scratch in the slot it
+       is standing in — back to being settleable rather than stuck wearing a
+       spent key, and still under the eye that just took the exit */
+    function onUndo(P, node) {
       unsettlePerson(P.snap);
       P.snap = null;
       P.net = P.was;
       P.was = 0;
       P.rows.shift();
-      const side = P.net > 0 ? 'pay' : 'collect';
-      live[side].push(P);
-      live[side].sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
-      rebuild();
+      const cls = P.net > 0 ? 'pp-pay' : 'pp-get';
+      live[P.net > 0 ? 'pay' : 'collect'].push(P);
+      node.replaceWith(openRow(P, cls));
       paintBoxes();
     }
 
@@ -2493,17 +2515,8 @@
       const node = personBlock(P, cls, true);
       const sw = node.querySelector('.pp-swipe');
       sw.addEventListener('settled', () => onSettle(P, node));
-      sw.addEventListener('unsettled', () => onUndo(P));
+      sw.addEventListener('unsettled', () => onUndo(P, node));
       return node;
-    }
-
-    function rebuild() {
-      for (const n of [...body.children])
-        if (n !== boxes && n !== sdiv && n !== done) n.remove();
-      for (const [side, cls] of [['pay', 'pp-pay'], ['collect', 'pp-get']])
-        for (const P of live[side]) body.insertBefore(openRow(P, cls), sdiv);
-      /* a person pulled back out of settled leaves it */
-      for (const n of [...done.children]) if (n.P.net) n.remove();
     }
 
     /* the ones that were already square when the sheet opened */
@@ -2515,7 +2528,8 @@
     }
 
     body.append(boxes, sdiv, done);
-    rebuild();
+    for (const [side, cls] of [['pay', 'pp-pay'], ['collect', 'pp-get']])
+      for (const P of live[side]) body.insertBefore(openRow(P, cls), sdiv);
     paintBoxes();
 
     openSheet('People', body, [['Done', 'primary', closeSheet]], 'is-people');
@@ -2691,7 +2705,15 @@ the balance it left behind.
 Buttons
   −   money out  (the sign is already set)
   +   money in
+  Hold either one for the person moves.
   Tap the balance for everything else.
+
+Keyboard
+  -        money out
+  +        money in
+  hold -   I gave someone · someone has my money
+  hold +   someone gave me · someone paid for me
+  Esc      back out of an entry
 
 Amount field
   5    add 5 to the balance
@@ -2856,6 +2878,74 @@ You
   }
   armMoves(btnOut, '-');
   armMoves(btnIn, '+');
+
+  /* ---------- the same two keys, on a keyboard ----------
+
+     A phone has one gesture per key, and so does a desk. − and + open an
+     entry, and HOLDING one for the same 420ms opens that direction's person
+     moves: the same key, the same wait, the same two things at the end of
+     it. Nothing new to learn and nothing new to document beyond which key.
+
+     Shift is not the hold. A modifier is a second thing to know about a
+     control that already has one gesture; the wait is the gesture the app
+     already uses everywhere else — a held row, a held key, a settle — and
+     the `is-arming` fill makes it the same thing to WATCH too.
+
+     The tap fires on the way UP, because that is the only place a tap and a
+     hold can still be told apart. Auto-repeat is what a held key actually
+     sends, so the first keydown arms and every repeat after it is ignored. */
+
+  /* − and + wherever the layout keeps them: the bare key, the shifted one,
+     and the numpad's, which report the signs directly */
+  const SIGN_KEY = { '-': '-', '_': '-', '−': '-', '+': '+', '=': '+' };
+
+  let typedKey = null, typedSeq = null, typedSpent = false;
+
+  function typedOff() {
+    clearTimeout(typedSeq);
+    if (typedKey) typedKey.classList.remove('is-arming');
+    typedKey = null;
+  }
+
+  /* A field has first claim on every key it can hold — but only a field that
+     is ON SCREEN. The compose input is hidden rather than removed, and the
+     focus does not always leave it when it goes; a closed field that still
+     answers to activeElement would take − and + with it for good. */
+  const inField = () => {
+    const el = document.activeElement;
+    if (!el || el.hidden) return false;
+    return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
+  };
+  const keysFree = () => C.beat === 0 && !C.busy && overlay.hidden && !inField();
+
+  document.addEventListener('keydown', (e) => {
+    const sign = SIGN_KEY[e.key];
+    if (!sign || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!keysFree()) return;
+    e.preventDefault();
+    const btn = sign === '-' ? btnOut : btnIn;
+    typedSpent = false;
+    typedKey = btn;
+    btn.classList.add('is-arming');
+    typedSeq = setTimeout(() => {
+      typedOff();
+      typedSpent = true;                 /* the hold has spent this press */
+      buildMoves(sign);
+      showChips(true);
+    }, 420);
+  });
+
+  document.addEventListener('keyup', (e) => {
+    const sign = SIGN_KEY[e.key];
+    if (!sign) return;
+    const armed = typedKey === (sign === '-' ? btnOut : btnIn);
+    typedOff();
+    if (typedSpent) { typedSpent = false; return; }
+    if (armed && keysFree()) startCompose(sign);
+  });
+
+  /* a key still down when the window goes is a key that is never coming up */
+  addEventListener('blur', typedOff);
 
   /* the moves are an offer, not a mode: anywhere else takes it back */
   document.addEventListener('pointerdown', (e) => {
@@ -3084,7 +3174,10 @@ You
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!overlay.hidden) { closeSheet(); return; }
-    if (C.beat !== 0) cancelCompose();
+    if (C.beat !== 0) { cancelCompose(); return; }
+    /* the moves are an offer, not a mode — Escape is the keyboard's way of
+       tapping outside them */
+    if (!chiprow.hidden) showChips(false, true);
   });
 
   /* ---------- first paint ---------- */

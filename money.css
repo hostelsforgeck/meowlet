@@ -638,6 +638,15 @@
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
+/* One hairline, every seam. The boxes are a summary and the rows are a list,
+   and the join between two kinds of thing earns the same mark the join
+   between two names already gets — so the list opens with an edge instead of
+   floating in the white under the boxes.
+
+   Nothing under SETTLED: a heading sits ON what it labels, and ruling both
+   sides of it boxes in a word that is only there to say which half you are
+   looking at. */
+.pp-boxes + .pp-person > .pp-row,
 .pp-person + .pp-person > .pp-row {
   box-shadow: inset 0 calc(1 * var(--u)) 0 rgba(11, 11, 11, .06);
 }
@@ -836,6 +845,25 @@
 }
 .pp-swipe.can-undo .pp-undo { opacity: 1; pointer-events: auto; }
 .pp-undo:active { background: rgba(255, 255, 255, .3); }
+.pp-undo:focus-visible {
+  outline: calc(2 * var(--u)) solid #fff;
+  outline-offset: calc(2 * var(--u));
+}
+
+/* ---------- settled where it stands ----------
+
+   The figure becomes the word and the name goes quiet, and that is all: the
+   row keeps its place, its height and its open body, because the exit is
+   inside that body and anything that moves or resizes here moves the exit
+   out from under the thumb still resting on it. */
+.pp-person.is-done .pp-two b { color: var(--ink-weekday); }
+.pp-person.is-done .pp-fig { color: var(--ink-off); font-weight: 400; }
+/* ...and the moves under it go quiet with it. The history is still there to
+   read — it is the proof the figure was ever owed — but it is a record now,
+   not a column with anything left to do, so it stops competing with the key
+   and the exit standing over it. */
+.pp-person.is-done .pp-txn { opacity: .42; }
+.pp-txn { transition: opacity .24s var(--ease-out); }
 
 /* ---------- settled, and always at the bottom ----------
 
